@@ -1,1 +1,1 @@
-# wle_utils
+Useful things when working on wle projects and other related stuff

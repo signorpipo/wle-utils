@@ -1,0 +1,1 @@
+C:\Calderone\Programmi\Oculus_CLI\ovr-platform-util.exe create-pwa -o %USERPROFILE%\Desktop\app\app.apk --android-sdk %USERPROFILE%\AppData\Local\Android\Sdk --package-name com.author.app --manifest-content-file %USERPROFILE%\Desktop\app\manifest.json
