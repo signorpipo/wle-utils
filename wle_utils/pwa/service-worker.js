@@ -3,7 +3,7 @@ const CACHE = "app-cache-v1";
 const files = [
     // This list can be created by looking at the list on the inspector app cache that is created after loading the app 2 times
     // On Chrome: Inspector -> Application -> Cache -> Cache Storage -> Your App Cache
-    // Tvery file in the list with Response-Type = basic must be put here to make it work offline on the first load
+    // Every file in the list with Response-Type = basic must be put here to make it work offline on the first load
     // The app will work offline even if this list is empty but will require it to be loaded 2 times, since the first only the files in this list
     // are actually precached
 ];
