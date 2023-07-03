@@ -6,7 +6,7 @@ let _NO_RESOURCE = [];
 let _ANY_RESOURCE_FROM_CURRENT_LOCATION = ["^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + ".*"];
 let _ANY_RESOURCE_FROM_CURRENT_ORIGIN = ["^" + _escapeRegexSpecialCharacters(_getCurrentOrigin()) + ".*"];
 
-let _LOCALHOST = ["localhost"];
+let _LOCALHOST = ["localhost:8080"];
 let _NO_LOCATION = [];
 
 // #endregion Service Worker Constants
@@ -124,7 +124,7 @@ let _myUpdateCacheInBackgroundResourceURLsToExclude = _NO_RESOURCE;
 // This is especially useful to avoid using a service worker on development locations like "localhost"
 //
 // The locations URLs can also be a regex
-let _myRejectServiceWorkerLocationURLsToInclude = _NO_LOCATION;
+let _myRejectServiceWorkerLocationURLsToInclude = _LOCALHOST;
 let _myRejectServiceWorkerLocationURLsToExclude = _NO_LOCATION;
 
 

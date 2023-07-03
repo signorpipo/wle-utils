@@ -34,6 +34,12 @@ let _myForceTryCacheFirstOnNetworkErrorFromCurrentLocation = false;
 
 
 
+// This will avoid installing the service worker on localhost,
+// since it might be annoying while developing your app
+let _myRejectServiceWorkerOnLocalhost = false;
+
+
+
 let _myLogEnabled = false;
 
 // #endregion Service Worker Setup
@@ -51,7 +57,7 @@ let _NO_RESOURCE = [];
 let _ANY_RESOURCE_FROM_CURRENT_LOCATION = ["^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + ".*"];
 let _ANY_RESOURCE_FROM_CURRENT_ORIGIN = ["^" + _escapeRegexSpecialCharacters(_getCurrentOrigin()) + ".*"];
 
-let _LOCALHOST = ["localhost"];
+let _LOCALHOST = ["localhost:8080"];
 let _NO_LOCATION = [];
 
 // #endregion Service Worker Constants
@@ -269,6 +275,13 @@ function shouldResourceBeCached(request, response) {
 // #region Service Worker Private Functions
 
 async function _install() {
+    if (_myRejectServiceWorkerOnLocalhost) {
+        let rejectServiceWorker = _shouldResourceURLBeIncluded(_getCurrentLocation(), _LOCALHOST, _NO_LOCATION);
+        if (rejectServiceWorker) {
+            throw new Error("The service worker is not allowed to be installed on the current location: " + _getCurrentLocation());
+        }
+    }
+
     await _cacheResourcesToPrecache();
 }
 
