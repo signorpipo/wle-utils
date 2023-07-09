@@ -392,7 +392,7 @@ let _myImmediatelyActivateNewServiceWorker = false;
 // like, for example, asking the user if they want to reload or not
 //
 // Use this with caution
-let _myImmediatelyTakeControlOfThePageWhenNotControlled = true;
+let _myImmediatelyTakeControlOfThePageWhenNotControlled = false;
 
 
 
