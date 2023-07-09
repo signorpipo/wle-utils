@@ -1053,23 +1053,6 @@ function _shouldDeleteCacheID(cacheID) {
     return deleteCacheID;
 }
 
-function _shouldDeleteRefetchFromNetworkChecklistID(refetchFromNetworkChecklistID) {
-    let deleteRefetchFromNetworkChecklistID = false;
-
-    let validRefetchFromNetworkChecklistID = _isRefetchFromNetworkChecklistID(refetchFromNetworkChecklistID);
-    if (validRefetchFromNetworkChecklistID) {
-        let refetchFromNetworkChecklistIDWithoutAppName = refetchFromNetworkChecklistID.replace(new RegExp("^" + _escapeRegexSpecialCharacters(_myAppName)), "");
-
-        let versions = refetchFromNetworkChecklistIDWithoutAppName.match(new RegExp("(?<=_v)\\d+(?=_|$)", "g"));
-
-        deleteRefetchFromNetworkChecklistID =
-            parseInt(versions[0]) < _myCacheVersion ||
-            (parseInt(versions[0]) == _myCacheVersion && parseInt(versions[1]) < _myRefetchFromNetworkVersion);
-    }
-
-    return deleteRefetchFromNetworkChecklistID;
-}
-
 function _shouldDeleteTempCacheID(tempCacheID) {
     let deleteTempCacheID = false;
 
@@ -1085,6 +1068,23 @@ function _shouldDeleteTempCacheID(tempCacheID) {
     }
 
     return deleteTempCacheID;
+}
+
+function _shouldDeleteRefetchFromNetworkChecklistID(refetchFromNetworkChecklistID) {
+    let deleteRefetchFromNetworkChecklistID = false;
+
+    let validRefetchFromNetworkChecklistID = _isRefetchFromNetworkChecklistID(refetchFromNetworkChecklistID);
+    if (validRefetchFromNetworkChecklistID) {
+        let refetchFromNetworkChecklistIDWithoutAppName = refetchFromNetworkChecklistID.replace(new RegExp("^" + _escapeRegexSpecialCharacters(_myAppName)), "");
+
+        let versions = refetchFromNetworkChecklistIDWithoutAppName.match(new RegExp("(?<=_v)\\d+(?=_|$)", "g"));
+
+        deleteRefetchFromNetworkChecklistID =
+            parseInt(versions[0]) < _myCacheVersion ||
+            (parseInt(versions[0]) == _myCacheVersion && parseInt(versions[1]) < _myRefetchFromNetworkVersion);
+    }
+
+    return deleteRefetchFromNetworkChecklistID;
 }
 
 function _shouldDeleteTempRefetchFromNetworkChecklistID(tempRefetchFromNetworkChecklistID) {
