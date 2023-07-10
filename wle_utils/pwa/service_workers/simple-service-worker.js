@@ -66,6 +66,13 @@ let _myLogEnabled = false;
 //   and prevent using it until the installation has been completed, but I think this would be an overkill unless it's really important, for example
 //   for a multiplayer experience where a glitch could give an advantage
 //
+//   Another solution if u want to precache is to unregister the current service worker when a new one is trying to install and reload the page
+//   The main difference here is that u don't have to wait for the new service worker to complete, since, by unregistering the current service worker,
+//   on reload u will get the new data immediately, while the new service worker is installing
+//
+//   In any case, it is implied that @_myUpdateCacheInBackground is disabled,
+//   otherwise u would get a mix of resource of old and new version due to that
+//
 // #endregion Known Issues
 
 

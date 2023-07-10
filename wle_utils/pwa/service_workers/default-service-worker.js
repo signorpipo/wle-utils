@@ -276,6 +276,27 @@ let _myCheckResourcesHaveBeenPrecachedOnFirstFetch = false;
 
 
 
+// If the service worker installation fails or do not manage to complete, for example because the tab is closed while installing,
+// on the next page load the service worker will attempt to install again
+//
+// This make it so that the installation can recover from the last attempt, so that, for example, it will not fetch the data
+// that was already fetched the last time and has been already cached in a temporary cache
+//
+// The main reason to disable this is because u want to be 100% sure that the data
+// that will be precached belongs to the same version of your app, which might not be true if the precache happens at different time
+// Note that this is useful only if u want to try the cache first and never update it in background, otherwise there is no point
+// in being sure it's the same version, since the resources will be updated anyway
+//
+// Besides, even in that case, it might not be needed anyway, since with this setup u usually update the service worker version together with
+// the app, which should install the new service worker instead of recovering from the previous one
+// On this last thing though, I'm not sure about the actual flow of the service worker installation
+// and if the previous one installation is actually aborted if a new one is found, or if the previous one can manage to complete
+// If that can happen (and is not considered a bug), than this would prevent getting a mix of old and new resources
+// Otherwise there is honestly no point in setting this to false
+let _myInstallationShouldRecoverFromLastAttempt = true;
+
+
+
 // Enable this to allow HEAD request to fetch from cache
 //
 // Note that HEAD requests are NOT cached, they will just check if there is a cached response that was made with a GET,
@@ -408,7 +429,7 @@ let _myImmediatelyTakeControlOfThePageWhenNotControlled = false;
 // This is actually useful only if u are updating your service worker very often, otherwise it's not worth the risk
 //
 // Use this with caution
-let _myShareTempDataBetweenServiceWorkers = false;
+let _myShareInstallationTemporaryDataBetweenServiceWorkers = false;
 
 
 
@@ -437,6 +458,19 @@ let _myShareTempDataBetweenServiceWorkers = false;
 //   If u instead care about precaching, an idea would be to find out that a new service worker is trying to install inside your app code,
 //   and prevent using it until the installation has been completed, but I think this would be an overkill unless it's really important, for example
 //   for a multiplayer experience where a glitch could give an advantage
+//
+//   Another solution if u want to precache is to unregister the current service worker when a new one is trying to install and reload the page
+//   The main difference here is that u don't have to wait for the new service worker to complete, since, by unregistering the current service worker,
+//   on reload u will get the new data immediately, while the new service worker is installing
+//
+//   Yet another solution would be to disable @_myInstallationShouldRecoverFromLastAttempt (or at least disable @_myShareInstallationTemporaryDataBetweenServiceWorkers),
+//   and enable @_myRejectServiceWorkerOnPrecacheFailResourceURLsToInclude on any resource
+//   This will make it so that only when all the precached resources have been precached during the same session the service worker is activated
+//   If all the cachable resources (or at least the core ones) are in the precache list, u can then be safe that no collision will happen because
+//   there will be no risk that they will be cached again later on
+//
+//   In any case, it is implied that @_myUpdateCacheInBackgroundResourceURLsToInclude is disabled, 
+//   otherwise u would get a mix of resource of old and new version due to that
 //
 // #endregion Known Issues
 
@@ -732,6 +766,11 @@ async function _cacheResourcesToPrecache(allowRejectOnPrecacheFail = true, useTe
 
     let currentTempCache = null;
     if (useTemps) {
+        if (!_myInstallationShouldRecoverFromLastAttempt) {
+            await caches.delete(_getTempCacheID());
+            await caches.delete(_getTempRefetchFromNetworkChecklistID());
+        }
+
         try {
             let tempCacheAlreadyExists = await caches.has(_getTempCacheID());
             if (tempCacheAlreadyExists) {
@@ -974,7 +1013,7 @@ function _getCacheID(cacheVersion = _myCacheVersion) {
 }
 
 function _getTempCacheID(cacheVersion = _myCacheVersion, serviceWorkerVersion = _myServiceWorkerVersion) {
-    serviceWorkerVersion = (_myShareTempDataBetweenServiceWorkers) ? 0 : serviceWorkerVersion;
+    serviceWorkerVersion = (_myShareInstallationTemporaryDataBetweenServiceWorkers && _myInstallationShouldRecoverFromLastAttempt) ? 0 : serviceWorkerVersion;
     return _getCacheID(cacheVersion) + "_temp_v" + serviceWorkerVersion.toFixed(0);
 }
 
@@ -983,7 +1022,7 @@ function _getRefetchFromNetworkChecklistID(cacheVersion = _myCacheVersion, refet
 }
 
 function _getTempRefetchFromNetworkChecklistID(cacheVersion = _myCacheVersion, refetchFromNetworkVersion = _myRefetchFromNetworkVersion, serviceWorkerVersion = _myServiceWorkerVersion) {
-    serviceWorkerVersion = (_myShareTempDataBetweenServiceWorkers) ? 0 : serviceWorkerVersion;
+    serviceWorkerVersion = (_myShareInstallationTemporaryDataBetweenServiceWorkers && _myInstallationShouldRecoverFromLastAttempt) ? 0 : serviceWorkerVersion;
     return _getRefetchFromNetworkChecklistID(cacheVersion, refetchFromNetworkVersion) + "_temp_v" + serviceWorkerVersion.toFixed(0);
 }
 
