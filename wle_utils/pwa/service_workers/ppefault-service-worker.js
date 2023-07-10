@@ -543,7 +543,7 @@ self.addEventListener("fetch", function (event) {
 async function fetchFromServiceWorker(request) {
     if (_myCheckResourcesHaveBeenPrecachedOnFirstFetch && !_myCheckResourcesHaveBeenPrecachedOnFirstFetchAlreadyPerformed) {
         _myCheckResourcesHaveBeenPrecachedOnFirstFetchAlreadyPerformed = true;
-        _cacheResourcesToPrecache(false, false); // Do not await for this, just do it in background
+        _cacheResourcesToPrecache(false, false, false); // Do not await for this, just do it in background
     }
 
     if (!_shouldHandleRequest(request)) {
@@ -639,7 +639,7 @@ async function fetchFromServiceWorker(request) {
 }
 
 async function cacheResourcesToPrecache(allowRejectOnPrecacheFail = false) {
-    return await _cacheResourcesToPrecache(allowRejectOnPrecacheFail, false);
+    return await _cacheResourcesToPrecache(allowRejectOnPrecacheFail, false, false);
 }
 
 async function fetchFromNetworkAndPutInCache(request, awaitOnlyFetchFromNetwork = false) {
@@ -760,7 +760,7 @@ async function _install() {
         throw new Error("The service worker is not allowed to be installed on the current location: " + _getCurrentLocation());
     }
 
-    await _cacheResourcesToPrecache(true, true);
+    await _cacheResourcesToPrecache(true, true, true);
 
     if (_myImmediatelyActivateNewServiceWorker) {
         self.skipWaiting();
@@ -781,7 +781,7 @@ async function _activate() {
     }
 }
 
-async function _cacheResourcesToPrecache(allowRejectOnPrecacheFail = true, useTemps = false) {
+async function _cacheResourcesToPrecache(allowRejectOnPrecacheFail = true, useTemps = false, installPhase = false) {
     if (getResourceURLsToPrecache().length == 0) return;
 
     let currentCache = null;
@@ -797,7 +797,7 @@ async function _cacheResourcesToPrecache(allowRejectOnPrecacheFail = true, useTe
 
     let currentTempCache = null;
     if (useTemps) {
-        if (!_myInstallationShouldRecoverFromLastAttempt) {
+        if (installPhase && !_myInstallationShouldRecoverFromLastAttempt) {
             await caches.delete(_getTempCacheID());
             await caches.delete(_getTempRefetchFromNetworkChecklistID());
         }
