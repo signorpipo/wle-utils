@@ -370,6 +370,8 @@ let _myAllowHEADRequestsToUpdateCacheInBackground = false;
 //
 // Note that this js code should be put in your app so that it is executed as soon as possible (for example in the first lines of your index.html),
 // so to avoid missing the controller change event
+// To be as safe as possible, u should put this before the line where u register
+// the service worker inside your app (window.navigator.serviceWorker.register)
 //
 // Be aware that the reload might happen while the user is using your app and not just at the beginning,
 // which could be annoying (but I'm not sure what the chances are of this actually happening or how to reproduce it)
@@ -430,6 +432,8 @@ let _myImmediatelyActivateNewServiceWorker = false;
 //
 // Note that this js code should be put in your app so that it is executed as soon as possible (for example in the first lines of your index.html),
 // so to avoid missing the controller change event
+// To be as safe as possible, u should put this before the line where u register
+// the service worker inside your app (window.navigator.serviceWorker.register)
 //
 // Be aware that the reload might happen while the user is using your app and not just at the beginning,
 // which could be annoying (but I'm not sure what the chances are of this actually happening or how to reproduce it)
@@ -487,12 +491,36 @@ let _myShareInstallationTemporaryDataBetweenServiceWorkers = false;
 //   This will basically switch to the new service worker as soon as possible, therefore fetching the new version of your app
 //
 //   If u instead care about precaching, an idea would be to find out that a new service worker is trying to install inside your app code,
-//   and prevent using it until the installation has been completed, but I think this would be an overkill unless it's really important, for example
-//   for a multiplayer experience where a glitch could give an advantage
+//   and "block" your app (possibly displaying a banner saying that the new version is been downloaded) until the installation has been completed
+//   U should also enable @_myImmediatelyActivateNewServiceWorker and reload the page when the controller change
+//   I honestly think this would be an overkill unless it's really important, for example for a multiplayer experience where a glitch could give an advantage
 //
-//   Another solution if u want to precache is to unregister the current service worker when a new one is trying to install and reload the page
+//   // This should be done before window.navigator.serviceWorker.register
+//   window.navigator.serviceWorker?.getRegistration().then(function (registration) {
+//      if(registration != null) {
+//          registration.addEventListener("updatefound", function () {
+//              // Block your app, when the new service worker will finish install the controller change event
+//              // will then make your page reload
+//              // See @_myImmediatelyActivateNewServiceWorker doc for more info about that
+//          });
+//      }
+//   });
+//
+//   Another solution, if u want to precache, is to unregister the current service worker when a new one is trying to install and reload the page
 //   The main difference here is that u don't have to wait for the new service worker to complete, since, by unregistering the current service worker,
 //   on reload u will get the new data immediately, while the new service worker is installing
+//
+//   // This should be done before window.navigator.serviceWorker.register
+//   // I'm not 100% sure about the behavior of the unregister function, so use this with caution, even though it seems to work
+//   window.navigator.serviceWorker?.getRegistration().then(function (registration) {
+//      if(registration != null) {
+//          registration.addEventListener("updatefound", function () {
+//              registration.unregister().then(function () {
+//                  window.location.reload();
+//              });
+//          });
+//      }
+//   });
 //
 //   Yet another solution would be to disable @_myInstallationShouldRecoverFromLastAttempt (or at least disable @_myShareInstallationTemporaryDataBetweenServiceWorkers),
 //   and enable @_myRejectServiceWorkerOnPrecacheFailResourceURLsToInclude on any resource

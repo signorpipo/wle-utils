@@ -46,37 +46,6 @@ let _myLogEnabled = false;
 
 
 
-// #region Known Issues
-//
-// - If a service worker only partially manage to cache the data (both during precache or normal fetch phase),
-//   and u update both your app and the service worker, in a way to clean the cache, while the new service worker install itself,
-//   the old service worker might start to use the new data while serving some of the old one too, mixing the 2 versions
-//   As soon as the new service worker is activated the app will be fixed, so it's not permanent, but in the meantime u could have errors
-//   in your app due to this
-
-//   If u always fetch first from the network, it should not be an issue, but if u try the cache first, then u can have this
-//   You should not worry too much about this tho, since it should not be a real issue happening often, and eventually fix itself
-//
-//   The easiest way to avoid having this, if u are really worried about it, is to have an empty @_myResourceURLsToPrecache list,
-//   so to complete the install as fast as possible, enable @_myImmediatelyActivateNewServiceWorker
-//   and reload the page when the service worker change
-//   This will basically switch to the new service worker as soon as possible, therefore fetching the new version of your app
-//
-//   If u instead care about precaching, an idea would be to find out that a new service worker is trying to install inside your app code,
-//   and prevent using it until the installation has been completed, but I think this would be an overkill unless it's really important, for example
-//   for a multiplayer experience where a glitch could give an advantage
-//
-//   Another solution if u want to precache is to unregister the current service worker when a new one is trying to install and reload the page
-//   The main difference here is that u don't have to wait for the new service worker to complete, since, by unregistering the current service worker,
-//   on reload u will get the new data immediately, while the new service worker is installing
-//
-//   In any case, it is implied that @_myUpdateCacheInBackground is disabled,
-//   otherwise u would get a mix of resource of old and new version due to that
-//
-// #endregion Known Issues
-
-
-
 
 
 
