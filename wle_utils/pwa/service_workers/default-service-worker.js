@@ -446,13 +446,13 @@ let _myShareInstallationTemporaryDataBetweenServiceWorkers = false;
 // #region Known Issues
 //
 // - If a service worker only partially manage to cache the data (both during precache or normal fetch phase),
-//   and u update both your app and the service worker, in a way to clean the cache, while the new service worker install itself,
-//   the old service worker might start to use the new data while serving some of the old one too, mixing the 2 versions
+//   and u update both your app and the service worker (to clean the current cache and build a new one),
+//   while the new service worker install itself the current service worker might start to use the new data while serving
+//   some of the current cached one too, mixing the 2 versions
 //   As soon as the new service worker is activated the app will be fixed, so it's not permanent, but in the meantime u could have errors
 //   in your app due to this
-
-//   If u always fetch first from the network, it should not be an issue, but if u try the cache first, then u can have this
-//   You should not worry too much about this tho, since it should not be a real issue happening often, and eventually fix itself
+//   You should not worry too much about this tho, since it should not be an issue happening often, especially if you are not
+//   updating your app every other day, and also eventually fix itself
 //
 //   The easiest way to avoid having this, if u are really worried about it, is to have an empty @_myResourceURLsToPrecache list,
 //   so to complete the install as fast as possible, enable @_myImmediatelyActivateNewServiceWorker
@@ -497,8 +497,13 @@ let _myShareInstallationTemporaryDataBetweenServiceWorkers = false;
 //   If all the cachable resources (or at least the core ones) are in the precache list, u can then be safe that no collision will happen because
 //   there will be no risk that they will be cached again later on
 //
-//   In any case, it is implied that @_myUpdateCacheInBackgroundResourceURLsToInclude is disabled, 
-//   otherwise u would get a mix of resource of old and new version due to that
+//   A thing to note is that u might think that if u always fetch first from the network, or update the cache in background,
+//   u should not have this issue, but this is not correct
+//   For example, even if u always fetch from network first and u might manage to fetch new resources,
+//   u might also fail to fetch some of them (due to network issue for example), fallbacking to the cache,
+//   resulting in a mix of old and new resources
+//   This means that, if u want to be sure to not have this issue, even when u are using these kinds of setups u have to use one of the above solutions,
+//   or another one that better fits your needs
 //
 // #endregion Known Issues
 
