@@ -62,6 +62,7 @@ let _myCacheVersion = 1;
 // The resources URLs can't be a regex in this case, since it needs to know the specific resource to fetch
 let _myResourceURLsToPrecache = [
     "/",
+    "index.html",
     "wonderland.min.js",
     "WonderlandRuntime-LoadingScreen.bin",
     //"WonderlandRuntime-physx.wasm",
