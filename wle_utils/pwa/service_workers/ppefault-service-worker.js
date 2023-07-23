@@ -210,7 +210,9 @@ let _myForceTryCacheFirstOnNetworkErrorResourceURLsToExclude = _NO_RESOURCE;
 //
 // The resources URLs can also be a regex
 let _myTryCacheIgnoringURLParamsResourceURLsToInclude = [
-    "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + "/\\?",
+    "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + "\\/$",
+    "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + "\\/\\?",
+    "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + "\\/index\\.html",
     "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + ".*bundle\\.js",
     "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + ".*wonderland.min\\.js"
 ];
