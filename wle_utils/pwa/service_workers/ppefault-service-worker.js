@@ -231,10 +231,10 @@ let _myTryCacheIgnoringVaryHeaderResourceURLsToExclude = _NO_RESOURCE;
 
 
 
-// This is the same as @_myTryCacheIgnoringURLParamsAsFallbackResourceURLsToInclude but as a fallback
+// This is the same as @_myTryCacheIgnoringURLParamsResourceURLsToInclude but as a fallback
 // for when the requested URL can't be found in any other way
 //
-// One of the reasons to use @_myTryCacheIgnoringURLParamsAsFallbackResourceURLsToInclude instead of the fallback version,
+// One of the reasons to use @_myTryCacheIgnoringURLParamsResourceURLsToInclude instead of the fallback version,
 // is that if u use it as fallback u first have to wait for the fetch to fail, while otherwise it can get it from the cache "instantly",
 // even though it is unsafer, due to not even checking if a properly matching version could be fetched from the network
 //
@@ -769,7 +769,7 @@ async function _fetchFromServiceWorker(request) {
     try {
         if (_myCheckResourcesHaveBeenPrecachedOnFirstFetch && !_myCheckResourcesHaveBeenPrecachedOnFirstFetchPerformed) {
             _myCheckResourcesHaveBeenPrecachedOnFirstFetchPerformed = true;
-            _cacheResourcesToPrecache(false, false, false); // Do not await for this, just do it in background
+            _cacheResourcesToPrecache(); // Do not await for this, just do it in background
         }
 
         if (!_shouldHandleRequest(request)) {
@@ -856,7 +856,7 @@ async function _fetchFromServiceWorker(request) {
             return responseFromNetwork;
         }
     } catch (error) {
-        let errorMessage = "An error occurred while trying to fetch from the service worker: " + request.url + "\n\n" + error;
+        let errorMessage = "An error occurred while trying to fetch from the service worker: " + request?.url + "\n\n" + error;
         let responseFromServiceWorker = new Response(errorMessage, {
             status: 500,
             headers: { "Content-Type": "text/plain" }
@@ -971,7 +971,20 @@ async function _putInCache(request, response, useTempCache = false) {
     return putInCacheSucceeded;
 }
 
-async function _cacheResourcesToPrecache(allowRejectOnPrecacheFail = true, useTemps = false, installPhase = false) {
+async function _tickOffFromRefetchFromNetworkChecklist(resourceURL, useTempRefetchFromNetworkChecklist = false) {
+    try {
+        let refetechChecklistID = (useTempRefetchFromNetworkChecklist) ? _getTempRefetchFromNetworkChecklistID() : _getRefetchFromNetworkChecklistID();
+        let refetchChecklist = await caches.open(refetechChecklistID);
+        await refetchChecklist.put(new Request(resourceURL), new Response(null));
+    } catch (error) {
+        let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
+        if (logEnabled) {
+            console.error("An error occurred while trying to put the response in the cache: " + request.url);
+        }
+    }
+}
+
+async function _cacheResourcesToPrecache(rejectOnPrecacheFailed = false, useTemps = false, installPhase = false) {
     if (_getResourceURLsToPrecache().length == 0) return;
 
     let currentCache = null;
@@ -1062,7 +1075,7 @@ async function _cacheResourcesToPrecache(allowRejectOnPrecacheFail = true, useTe
                 }
             }
 
-            if (resourceHasBeenPrecached || !allowRejectOnPrecacheFail) {
+            if (resourceHasBeenPrecached || !rejectOnPrecacheFailed) {
                 resolve();
             } else {
                 let rejectServiceWorkerOnPrecacheFail = _shouldResourceURLBeIncluded(resourceCompleteURLToPrecache, _myRejectServiceWorkerOnPrecacheFailResourceURLsToInclude, _myRejectServiceWorkerOnPrecacheFailResourceURLsToExclude);
@@ -1077,55 +1090,6 @@ async function _cacheResourcesToPrecache(allowRejectOnPrecacheFail = true, useTe
     }
 
     await Promise.all(promisesToAwait);
-}
-
-async function _deletePreviousCaches() {
-    try {
-        let cachesIDs = await caches.keys();
-
-        for (let cacheID of cachesIDs) {
-            try {
-                if (_shouldDeleteCacheID(cacheID)) {
-                    await caches.delete(cacheID);
-                }
-            } catch (error) {
-                // Do nothing
-            }
-        }
-    } catch (error) {
-        // Do nothing
-    }
-}
-
-async function _tickOffFromRefetchFromNetworkChecklist(resourceURL, useTempRefetchFromNetworkChecklist = false) {
-    try {
-        let refetechChecklistID = (useTempRefetchFromNetworkChecklist) ? _getTempRefetchFromNetworkChecklistID() : _getRefetchFromNetworkChecklistID();
-        let refetchChecklist = await caches.open(refetechChecklistID);
-        await refetchChecklist.put(new Request(resourceURL), new Response(null));
-    } catch (error) {
-        let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
-        if (logEnabled) {
-            console.error("An error occurred while trying to put the response in the cache: " + request.url);
-        }
-    }
-}
-
-async function _deletePreviousRefetchFromNetworkChecklists() {
-    try {
-        let cachesIDs = await caches.keys();
-
-        for (let cacheID of cachesIDs) {
-            try {
-                if (_shouldDeleteRefetchFromNetworkChecklistID(cacheID)) {
-                    await caches.delete(cacheID);
-                }
-            } catch (error) {
-                // Do nothing
-            }
-        }
-    } catch (error) {
-        // Do nothing
-    }
 }
 
 async function _copyTempCacheToCurrentCache() {
@@ -1214,6 +1178,42 @@ async function _copyTempRefetchFromNetworkChecklistToCurrentRefetchFromNetworkCh
     }
 }
 
+async function _deletePreviousCaches() {
+    try {
+        let cachesIDs = await caches.keys();
+
+        for (let cacheID of cachesIDs) {
+            try {
+                if (_shouldDeleteCacheID(cacheID)) {
+                    await caches.delete(cacheID);
+                }
+            } catch (error) {
+                // Do nothing
+            }
+        }
+    } catch (error) {
+        // Do nothing
+    }
+}
+
+async function _deletePreviousRefetchFromNetworkChecklists() {
+    try {
+        let cachesIDs = await caches.keys();
+
+        for (let cacheID of cachesIDs) {
+            try {
+                if (_shouldDeleteRefetchFromNetworkChecklistID(cacheID)) {
+                    await caches.delete(cacheID);
+                }
+            } catch (error) {
+                // Do nothing
+            }
+        }
+    } catch (error) {
+        // Do nothing
+    }
+}
+
 function _getResourceURLsToPrecache() {
     return _myResourceURLsToPrecache;
 }
@@ -1239,9 +1239,12 @@ function _shouldResourceBeCached(request, response) {
 }
 
 function _shouldHandleRequest(request) {
-    let handleHEADRequest = _shouldResourceURLBeIncluded(request.url, _myHandleHEADRequestsResourceURLsToInclude, _myHandleHEADRequestsResourceURLsToExclude);
-    return request != null && request.url != null && request.method != null &&
-        (request.method == "GET" || (handleHEADRequest && request.method == "HEAD"));
+    let handleHEADRequest = false;
+    if (request != null && request.url != null) {
+        handleHEADRequest = _shouldResourceURLBeIncluded(request.url, _myHandleHEADRequestsResourceURLsToInclude, _myHandleHEADRequestsResourceURLsToExclude);
+    }
+
+    return request != null && request.url != null && request.method != null && (request.method == "GET" || (handleHEADRequest && request.method == "HEAD"));
 }
 
 function _getCacheID(cacheVersion = _myCacheVersion) {
@@ -1249,8 +1252,8 @@ function _getCacheID(cacheVersion = _myCacheVersion) {
 }
 
 function _getTempCacheID(cacheVersion = _myCacheVersion, serviceWorkerVersion = _myServiceWorkerVersion) {
-    serviceWorkerVersion = (_myInstallationTemporaryDataSharingEnabled && _myRecoverInstallationFromLastAttempt) ? 0 : serviceWorkerVersion;
-    return _getCacheID(cacheVersion) + "_temp_v" + serviceWorkerVersion.toFixed(0);
+    let tempVersion = (_myInstallationTemporaryDataSharingEnabled && _myRecoverInstallationFromLastAttempt) ? 0 : serviceWorkerVersion;
+    return _getCacheID(cacheVersion) + "_temp_v" + tempVersion.toFixed(0);
 }
 
 function _getRefetchFromNetworkChecklistID(cacheVersion = _myCacheVersion, refetchFromNetworkVersion = _myRefetchFromNetworkVersion) {
@@ -1258,8 +1261,8 @@ function _getRefetchFromNetworkChecklistID(cacheVersion = _myCacheVersion, refet
 }
 
 function _getTempRefetchFromNetworkChecklistID(cacheVersion = _myCacheVersion, refetchFromNetworkVersion = _myRefetchFromNetworkVersion, serviceWorkerVersion = _myServiceWorkerVersion) {
-    serviceWorkerVersion = (_myInstallationTemporaryDataSharingEnabled && _myRecoverInstallationFromLastAttempt) ? 0 : serviceWorkerVersion;
-    return _getRefetchFromNetworkChecklistID(cacheVersion, refetchFromNetworkVersion) + "_temp_v" + serviceWorkerVersion.toFixed(0);
+    let tempVersion = (_myInstallationTemporaryDataSharingEnabled && _myRecoverInstallationFromLastAttempt) ? 0 : serviceWorkerVersion;
+    return _getRefetchFromNetworkChecklistID(cacheVersion, refetchFromNetworkVersion) + "_temp_v" + tempVersion.toFixed(0);
 }
 
 function _isCacheID(cacheID) {
