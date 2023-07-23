@@ -1,13 +1,14 @@
 // #region Service Worker Constants
 
-let _ANY_RESOURCE = [".*"];
+let _EVERY_RESOURCE = [".*"];
 let _NO_RESOURCE = [];
 
-let _ANY_RESOURCE_FROM_CURRENT_LOCATION = ["^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + ".*"];
-let _ANY_RESOURCE_FROM_CURRENT_ORIGIN = ["^" + _escapeRegexSpecialCharacters(_getCurrentOrigin()) + ".*"];
+let _EVERY_RESOURCE_FROM_CURRENT_LOCATION = ["^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + ".*"];
+let _EVERY_RESOURCE_FROM_CURRENT_ORIGIN = ["^" + _escapeRegexSpecialCharacters(_getCurrentOrigin()) + ".*"];
 
-let _LOCALHOST = ["localhost:8080"];
+let _EVERY_LOCATION = [".*"];
 let _NO_LOCATION = [];
+let _LOCALHOST = ["localhost:8080"];
 
 // #endregion Service Worker Constants
 
@@ -62,12 +63,12 @@ let _myResourceURLsToPrecache = [];
 
 
 
-// Which resources should be cached
+// Which resources can be cached
 // Note that, as of now, only requests made with a GET method can be cached
 //
 // The resources URLs can also be a regex
-let _myCacheResourceURLsToInclude = _ANY_RESOURCE;
-let _myCacheResourceURLsToExclude = _NO_RESOURCE;
+let _myPutInCacheResourceURLsToInclude = _EVERY_RESOURCE;
+let _myPutInCacheResourceURLsToExclude = _NO_RESOURCE;
 
 
 
@@ -103,7 +104,12 @@ let _myRejectServiceWorkerLocationURLsToExclude = _NO_LOCATION;
 
 
 // Enable some extra logs to better understand what's going on and why things might not be working
-let _myLogEnabled = false;
+//
+// Note that some of the logs, in particular the ones that just log once, will be logged anyway
+//
+// The resources URLs can also be a regex
+let _myLogEnabledLocationURLsToInclude = _NO_LOCATION;
+let _myLogEnabledLocationURLsToExclude = _NO_LOCATION;
 
 
 
@@ -115,11 +121,29 @@ let _myLogEnabled = false;
 
 
 
-// Which resources can be fetched from the cache
+// Which resources can be fetched from the network
+// Usually u should always allow every resource, but can be useful if u want to use a resource
+// only if it was precached
 //
 // The resources URLs can also be a regex
-let _myAllowFetchFromCacheResourceURLsToInclude = _ANY_RESOURCE;
-let _myAllowFetchFromCacheResourceURLsToExclude = _NO_RESOURCE;
+let _myFetchFromNetworkAllowedResourceURLsToInclude = _EVERY_RESOURCE;
+let _myFetchFromNetworkAllowedResourceURLsToExclude = _NO_RESOURCE;
+
+
+
+// Which resources can be fetched from the cache
+//
+// Usually, this should just include every resource, since u can control the ones that are cached with @_myPutInCacheResourceURLsToInclude
+// There are some cases where u might want to use this anyway
+// For example, if u want to update the service worker to avoid fetching a specific resource, but do not want to update the cache version,
+// since the resources have not been updated, u can use this to avoid fetching that specific resource,
+// which could have been already cached by a previous service worker
+//
+// If u, at some point, update the cache version, u can remove the resource URL from here and exclude it directly from the cached ones
+//
+// The resources URLs can also be a regex
+let _myFetchFromCacheAllowedResourceURLsToInclude = _EVERY_RESOURCE;
+let _myFetchFromCacheAllowedResourceURLsToExclude = _NO_RESOURCE;
 
 
 
@@ -207,8 +231,41 @@ let _myTryCacheIgnoringVaryHeaderAsFallbackResourceURLsToExclude = _NO_RESOURCE;
 // so to avoid caching a bad opaque response forever
 //
 // The resources URLs can also be a regex
-let _myCacheOpaqueResponseResourceURLsToInclude = _NO_RESOURCE;
-let _myCacheOpaqueResponseResourceURLsToExclude = _NO_RESOURCE;
+let _myPutInCacheAllowedForOpaqueResponsesResourceURLsToInclude = _NO_RESOURCE;
+let _myPutInCacheAllowedForOpaqueResponsesResourceURLsToExclude = _NO_RESOURCE;
+
+
+
+// Enable this to allow HEAD request to be handled by the service worker
+//
+// Note that HEAD requests are NOT cached, they will just check if there is a cached response that was made with a GET,
+// and will return that response
+// This means that the the returned response will actually have a body, even though HEAD request should not have it
+//
+// The resources URLs can also be a regex
+let _myHandleHEADRequestsResourceURLsToInclude = _NO_RESOURCE;
+let _myHandleHEADRequestsResourceURLsToExclude = _NO_RESOURCE;
+
+
+
+// Enable this to allow HEAD request to update the cache in background after fetching from the cache
+//
+// Normally, only when a GET request fetches from the cache it will trigger a cache update in background,
+// if @_myUpdateCacheInBackgroundResourceURLsToInclude is enabled for that resource
+// This make it so that cached resources will be updated in background even for HEAD requests
+//
+// Note that the GET request to update the cache in background is created from the HEAD one through the following js code
+//
+// new Request(headRequest, { method: "GET" })
+//
+// This should be safe, but it could potentially create a slightly different GET request,
+// which could create issues if cached
+//
+// Use this with caution
+//
+// The resources URLs can also be a regex
+let _myUpdateCacheInBackgroundAllowedForHEADRequestsResourceURLsToInclude = _NO_RESOURCE;
+let _myUpdateCacheInBackgroundAllowedForHEADRequestsResourceURLsToExclude = _NO_RESOURCE;
 
 
 
@@ -262,9 +319,29 @@ let _myRefetchFromNetworkVersion = 1;
 // If some resources must be precached for your service worker to work properly,
 // u can specify them here so that the installation will fail if their precache fails
 //
+// When using this u should also enable @_myRejectServiceWorkerOnActivationFail, since a failure in the activation phase
+// might mean that the resources u needed to be precached might not be available
+// It is not automatically done since enabling it will make all the pages reload if the activation fails, and u might prefer
+// to have a "precache error" than a page reload
+//
 // The resources URLs can also be a regex
 let _myRejectServiceWorkerOnPrecacheFailResourceURLsToInclude = _NO_RESOURCE;
 let _myRejectServiceWorkerOnPrecacheFailResourceURLsToExclude = _NO_RESOURCE;
+
+
+
+// If the activation phase fail, normally the service worker is activated anyway
+//
+// Usually it's not an issue, but since the precached resources are actually made available during the activation phase,
+// if it fails u might not have those resources precached
+// This should not be an issue, since they will be cached anyway the first time they are fetched normally by your app,
+// but if it's important that everything is properly precached, u can enable this to reject the service worker if an error happens
+//
+// Note that it should be very unlikely that the activation phase fails, but I can't say for sure it is impossible
+//
+// Another thing to note is that this will make every pages reload, because it's the only way I've found to actually reject
+// the service worker on activation, which would control the page anyway otherwise
+let _myRejectServiceWorkerOnActivationFail = false;
 
 
 
@@ -293,34 +370,7 @@ let _myCheckResourcesHaveBeenPrecachedOnFirstFetch = false;
 // and if the previous one installation is actually aborted if a new one is found, or if the previous one can manage to complete
 // If that can happen (and is not considered a bug), than this would prevent getting a mix of old and new resources
 // Otherwise there is honestly no point in setting this to false
-let _myInstallationShouldRecoverFromLastAttempt = true;
-
-
-
-// Enable this to allow HEAD request to fetch from cache
-//
-// Note that HEAD requests are NOT cached, they will just check if there is a cached response that was made with a GET,
-// and will return that response
-// This means that the the returned response will actually have a body, even though HEAD request should not have it
-let _myAllowHEADRequestsToFetchFromCache = false;
-
-
-
-// Enable this to allow HEAD request to update the cache in background after fetching from the cache
-//
-// Normally, only when a GET request fetches from the cache it will trigger a cache update in background,
-// if @_myUpdateCacheInBackgroundResourceURLsToInclude is enabled for that resource
-// This make it so that cached resources will be updated in background even for HEAD requests
-//
-// Note that the GET request to update the cache in background is created from the HEAD one through the following js code
-//
-// new Request(headRequest, { method: "GET" })
-//
-// This should be safe, but it could potentially create a slightly different GET request,
-// which could create issues if cached
-// 
-// Use this with caution
-let _myAllowHEADRequestsToUpdateCacheInBackground = false;
+let _myRecoverInstallationFromLastAttempt = true;
 
 
 
@@ -331,7 +381,10 @@ let _myAllowHEADRequestsToUpdateCacheInBackground = false;
 // due to the fact that the new service worker might be working with data fetched by the previous one in the same session
 //
 // Beside, when enabling this it would probably be better to also trigger a page reload
-// You can add the following js code to your app to achieve the page reload on controller change:
+// To do this, the easiest way is to enable @_myReloadAllPagesOnServiceWorkerActivation
+//
+// If you instead want to have more control over the reload, for example to show a confirm dialog warning the user
+// that the page will be reloaded, you can add the following js code to your app:
 //
 // window.navigator.serviceWorker?.addEventListener("controllerchange", function () {
 //     window.location.reload();
@@ -353,26 +406,41 @@ let _myAllowHEADRequestsToUpdateCacheInBackground = false;
 // Use this with caution
 let _myImmediatelyActivateNewServiceWorker = false;
 
+// Normally, a service worker can activate itself only when there is no page left currently using the old one
+// This means that it's not important to use this normally, because it would not do anything
+//
+// This is mostly useful when used in combo with @_myImmediatelyActivateNewServiceWorker since it will make it so
+// the pages are reloaded when the new service worker is activated
+//
+// U might also enable this anyway just to be sure that every time a new service worker is activated every page is reloaded,
+// but do this only if u know what u are doing
+//
+// Note that this will only make the page reload if it was already controlled by a service worker
+let _myReloadAllPagesOnServiceWorkerActivation = false;
+
 
 
 // When a page is not controlled (usually on the first load), even though the service worker is activated
 // it does not actually starts to control the page until it's loaded again,
 // since a service worker has to take care of a page from the start
 //
-// This make it so that the service worker will immediately (as soon as possible) take control over the page even when
-// it was not being controlled yet (which basically means that it will be controlled even on the first load)
+// This make it so that the service worker will immediately (as soon as possible) take control over the pages,
+// even when they were not being controlled yet (which basically means that they will be controlled even on the first load)
+//
+// There might also be another edge case where one of the pages might have an older service worker controlling it,
+// which should only happen if u manually unregister it on a page and reload it, but the others are not reloaded
+// This will make the new service worker control those pages too
+// This might not be intended, and u might only would like to do this only for uncontrolled pages, 
+// but sadly I don't know if there is a way to achieve that, and this is just an edge case which should be very unlikely to happen
 //
 // As for @_myImmediatelyActivateNewServiceWorker, this can potentially cause issues
 // due to the fact that the service worker might be fetching the data in a different way compared to not having it,
 // and the page fetched at least a bit of data without the service worker, since it was started as soon as possible, but not
 // from the beginning
 //
-// In general, this should not be an issue for the first service worker, unless u have a very specific service worker logic,
-// so you should be able to set this to true without worrying too much
-//
 // The advantages of using this are:
 // 1. If the page goes offline on the first load and u need to fetch data, the service worker can already try to use the cache
-// 2. The service worker can already cache some data which might be hard (if not impossible) to precache otherwise
+// 2. The service worker can already cache some data on first load, which might be hard (if not impossible) to precache otherwise
 //    This is kind of useful, but not reliable, so u still have to properly fill the precache resource URL list yourself if u want your app
 //    to work offline even after the first load
 //
@@ -413,7 +481,16 @@ let _myImmediatelyActivateNewServiceWorker = false;
 // like, for example, asking the user if they want to reload or not
 //
 // Use this with caution
-let _myImmediatelyTakeControlOfThePageWhenNotControlled = false;
+let _myImmediatelyTakeControlOfAllPages = false;
+
+// This will reload every page that the service worker will start to control due to @_myImmediatelyTakeControlOfAllPages
+//
+// The reason why there is not just one variable for this, that is @_myReloadAllPagesOnServiceWorkerActivation, is because this way
+// u can decide if u want to reload even pages that were not previously controlled by any service worker or not
+//
+// This is due to the fact that @_myReloadAllPagesOnServiceWorkerActivation can only reload pages already controlled, while
+// this flag let you also reload the pages that will be controlled thanks to @ _myImmediatelyTakeControlOfAllPages
+let _myReloadAllPagesAfterImmediatelyTakingControlOfThem = false;
 
 
 
@@ -433,7 +510,7 @@ let _myImmediatelyTakeControlOfThePageWhenNotControlled = false;
 // This is actually useful only if u are updating your service worker very often, otherwise it's not worth the risk
 //
 // Use this with caution
-let _myShareInstallationTemporaryDataBetweenServiceWorkers = false;
+let _myInstallationTemporaryDataSharingEnabled = false;
 
 
 
@@ -455,13 +532,12 @@ let _myShareInstallationTemporaryDataBetweenServiceWorkers = false;
 //   updating your app every other day, and also eventually fix itself
 //
 //   The easiest way to avoid having this, if u are really worried about it, is to have an empty @_myResourceURLsToPrecache list,
-//   so to complete the install as fast as possible, enable @_myImmediatelyActivateNewServiceWorker
-//   and reload the page when the service worker change
+//   so to complete the install as fast as possible, and enable @_myImmediatelyActivateNewServiceWorker and @_myReloadAllPagesOnServiceWorkerActivation
 //   This will basically switch to the new service worker as soon as possible, therefore fetching the new version of your app
 //
 //   If u instead care about precaching, an idea would be to find out that a new service worker is trying to install inside your app code,
 //   and "block" your app (possibly displaying a banner saying that the new version is been downloaded) until the installation has been completed
-//   U should also enable @_myImmediatelyActivateNewServiceWorker and reload the page when the controller change
+//   U should also enable @_myImmediatelyActivateNewServiceWorker and @_myReloadAllPagesOnServiceWorkerActivation
 //   I honestly think this would be an overkill unless it's really important, for example for a multiplayer experience where a glitch could give an advantage
 //
 //   // This should be done before window.navigator.serviceWorker.register
@@ -470,7 +546,7 @@ let _myShareInstallationTemporaryDataBetweenServiceWorkers = false;
 //          registration.addEventListener("updatefound", function () {
 //              // Block your app, when the new service worker will finish install the controller change event
 //              // will then make your page reload
-//              // See @_myImmediatelyActivateNewServiceWorker doc for more info about that
+//              // Check @_myImmediatelyActivateNewServiceWorker to see how u can reload the page on controller change
 //          });
 //      }
 //   });
@@ -491,12 +567,54 @@ let _myShareInstallationTemporaryDataBetweenServiceWorkers = false;
 //      }
 //   });
 //
-//   Yet another solution would be to disable @_myInstallationShouldRecoverFromLastAttempt (or at least disable @_myShareInstallationTemporaryDataBetweenServiceWorkers),
-//   and enable @_myRejectServiceWorkerOnPrecacheFailResourceURLsToInclude on any resource
-//   This will make it so that only when all the precached resources have been precached during the same session the service worker is activated
-//   If all the cachable resources (or at least the core ones) are in the precache list, u can then be safe that no collision will happen because
-//   there will be no risk that they will be cached again later on
+//   Yet another solution would be to disable @_myRecoverInstallationFromLastAttempt (or at least disable @_myInstallationTemporaryDataSharingEnabled),
+//   and enable @_myRejectServiceWorkerOnPrecacheFailResourceURLsToInclude on every resource, then disable @_myFetchFromCacheAllowedResourceURLsToInclude for every resource
+//   that has been precached, so that there is no way they will be fetched again, and, as last, enable @_myRejectServiceWorkerOnActivationFail, so that only when
+//   even the activation phase is properly completed the service worker can actually start
+//   This will make it so that, only when all the precached resources have been precached during the same session, the service worker is activated
+//   If all the cachable resources (or at least the core ones) are in the precache list, and the fetch from network is disabled for those resources,
+//   then your app will not be updated until a new service worker is activated
+//   This will make your app basically feel like an offline app that needs to be installed more than a web page, even though, if the service worker fails
+//   your app will still be able to run by fetching from the network, but of course every resource will be the latest one in that case
 //
+//   As last, if u want to make your app work only when controlled by a service worker, u can check that
+//   window.navigator.serviceWorker?.controller != null, and display a dialog saying your app is installing otherwise, preventing your
+//   app from being used in the meantime
+//   U will also have to enable @_myImmediatelyTakeControlOfAllPages, and either enable @_myReloadAllPagesAfterImmediatelyTakingControlOfThem,
+//   or reload on controller change yourself (check @_myImmediatelyActivateNewServiceWorker to see how u can reload the page on controller change)
+//   Since the installation might fail, u should also check every X seconds if the registration does actually contain a controller,
+//   and display that the installation failed otherwise
+//
+//   let serviceWorkerInstallResults = { installing: false, installFailed: window.navigator.serviceWorker == null };
+//
+//   window.navigator.serviceWorker?.register("service-worker.js").then(function () {
+//       serviceWorkerInstallResults.installing = true;
+//   }).catch(function () {
+//       serviceWorkerInstallResults.installFailed = true;
+//   });
+//
+//   ...
+//
+//   // Every X seconds perform these checks
+//
+//   window.navigator.serviceWorker?.getRegistration().then(function (registration) {
+//       if (serviceWorkerInstallResults.installing) {
+//           if (registration != null) {
+//               serviceWorkerInstallResults.installFailed = true;
+//           }
+//       }
+//   });
+//
+//   if (serviceWorkerInstallResults.installFailed) {
+//       // Display a dialog saying the installation failed and reload or whatever u prefer
+//   } else if (window.navigator.serviceWorker?.controller == null) {
+//       // Display a dialog saying the installation is in progress
+//   } else {
+//       // Display a dialog saying the app has been installed and reload the page or whatever u prefer
+//   }
+//
+//   As always, this is just an example to give u an idea on how to achieve that, and u might have to adjust this to your needs
+//   
 //   A thing to note is that u might think that if u always fetch first from the network, or update the cache in background,
 //   u should not have this issue, but this is not correct
 //   For example, even if u always fetch from network first and u might manage to fetch new resources,
@@ -504,6 +622,19 @@ let _myShareInstallationTemporaryDataBetweenServiceWorkers = false;
 //   resulting in a mix of old and new resources
 //   This means that, if u want to be sure to not have this issue, even when u are using these kinds of setups u have to use one of the above solutions,
 //   or another one that better fits your needs
+//
+//   I'm also not sure if the browser own cache can also mess up with this and serve an older resource when fetching it from network
+//   I don't know how u could handle this case or if it is even something to worry about, but the issue here is that even when installing a new service worker
+//   and precaching the new resources, if a resource is fetched from the browser cache the service worker will think it's the latest one, even though it's not,
+//   leading to a mix of old and new resources
+//   It seems like the service worker fetch actually bypass the browser cache, so it should not be an issue, but I'm not 100% sure about it
+//   Beside, I don't know if there could also be other things intercepting your network request, like the service hosting your app,
+//   which could use their own cache to serve you the resources u are trying to fetch
+//   I'm not sure if this is even possible, but if it was, this would mean that, even if the service worker can actually 
+//   bypass the browser cache, something else might give u a cached resource anyway
+//
+//   As u can see, this is a complex issue, so if for u this is really important I advise u to also do your own research on this topic,
+//   and use this more as a starting point than an actual complete solution to your problem
 //
 // #endregion Known Issues
 
@@ -514,7 +645,7 @@ let _myShareInstallationTemporaryDataBetweenServiceWorkers = false;
 
 // #region Service Worker Variables
 
-let _myCheckResourcesHaveBeenPrecachedOnFirstFetchAlreadyPerformed = false; // As of now this is not reset on page reload, but only when using a new tab
+let _myCheckResourcesHaveBeenPrecachedOnFirstFetchPerformed = false; // As of now this is not reset on page reload, but only when using a new tab
 
 let _myForceTryCacheFirstOnNetworkErrorEnabled = false; // As of now this is not reset on page reload, but only when using a new tab
 
@@ -533,228 +664,14 @@ self.addEventListener("activate", function (event) {
 });
 
 self.addEventListener("fetch", function (event) {
-    event.respondWith(fetchFromServiceWorker(event.request));
+    event.respondWith(_fetchFromServiceWorker(event.request));
 });
 
 // #endregion Service Worker Events
 
 
 
-// #region Service Worker Public Functions
-
-async function fetchFromServiceWorker(request) {
-    if (_myCheckResourcesHaveBeenPrecachedOnFirstFetch && !_myCheckResourcesHaveBeenPrecachedOnFirstFetchAlreadyPerformed) {
-        _myCheckResourcesHaveBeenPrecachedOnFirstFetchAlreadyPerformed = true;
-        _cacheResourcesToPrecache(false, false, false); // Do not await for this, just do it in background
-    }
-
-    if (!_shouldHandleRequest(request)) {
-        return fetch(request);
-    }
-
-    let cacheAlreadyTried = false;
-
-    let refetchFromNetwork = await _shouldResourceBeRefetchedFromNetwork(request.url);
-    let allowFetchFromCache = _shouldResourceURLBeIncluded(request.url, _myAllowFetchFromCacheResourceURLsToInclude, _myAllowFetchFromCacheResourceURLsToExclude);
-
-    if (!refetchFromNetwork && allowFetchFromCache) {
-        let tryCacheFirst = _shouldResourceURLBeIncluded(request.url, _myTryCacheFirstResourceURLsToInclude, _myTryCacheFirstResourceURLsToExclude);
-        let forceTryCacheFirstOnNetworkError = _myForceTryCacheFirstOnNetworkErrorEnabled && _shouldResourceURLBeIncluded(request.url, _myForceTryCacheFirstOnNetworkErrorResourceURLsToInclude, _myForceTryCacheFirstOnNetworkErrorResourceURLsToExclude);
-
-        if (tryCacheFirst || forceTryCacheFirstOnNetworkError) {
-            cacheAlreadyTried = true;
-
-            // Try to get the resource from the cache
-            try {
-                let ignoreURLParams = _shouldResourceURLBeIncluded(request.url, _myTryCacheIgnoringURLParamsResourceURLsToInclude, _myTryCacheIgnoringURLParamsResourceURLsToExclude);
-                let ignoreVaryHeader = _shouldResourceURLBeIncluded(request.url, _myTryCacheIgnoringVaryHeaderResourceURLsToInclude, _myTryCacheIgnoringVaryHeaderResourceURLsToExclude);
-                let responseFromCache = await fetchFromCache(request.url, ignoreURLParams, ignoreVaryHeader);
-                if (responseFromCache != null) {
-                    if (request.method == "GET" || (_myAllowHEADRequestsToUpdateCacheInBackground && request.method == "HEAD")) {
-                        let updateCacheInBackground = _shouldResourceURLBeIncluded(request.url, _myUpdateCacheInBackgroundResourceURLsToInclude, _myUpdateCacheInBackgroundResourceURLsToExclude);
-                        if (updateCacheInBackground) {
-                            if (request.method == "GET") {
-                                _fetchFromNetworkAndPutInCache(request);
-                            } else if (request.method == "HEAD") {
-                                _fetchFromNetworkAndPutInCache(new Request(request, { method: "GET" }));
-                            }
-                        }
-                    }
-
-                    return responseFromCache;
-                }
-            } catch (error) {
-                // Do nothing, possibly get from cache failed so we should go on and try with the network
-            }
-        }
-    }
-
-    // Try to get the resource from the network
-    let [responseFromNetwork, responseHasBeenCached] = await _fetchFromNetworkAndPutInCache(request, true, refetchFromNetwork);
-    if (isResponseOk(responseFromNetwork) || isResponseOpaque(responseFromNetwork)) {
-        return responseFromNetwork;
-    } else {
-        if (!_myForceTryCacheFirstOnNetworkErrorEnabled) {
-            let enableForceTryCacheFirstOnNetworkError = _shouldResourceURLBeIncluded(request.url, _myEnableForceTryCacheFirstOnNetworkErrorResourceURLsToInclude, _myEnableForceTryCacheFirstOnNetworkErrorResourceURLsToExclude);
-            if (enableForceTryCacheFirstOnNetworkError) {
-                _myForceTryCacheFirstOnNetworkErrorEnabled = true;
-
-                if (_myLogEnabled) {
-                    console.warn("Force try cache on network error enabled");
-                }
-            }
-        }
-
-        if (allowFetchFromCache) {
-            if (!cacheAlreadyTried) {
-                let ignoreURLParams = _shouldResourceURLBeIncluded(request.url, _myTryCacheIgnoringURLParamsResourceURLsToInclude, _myTryCacheIgnoringURLParamsResourceURLsToExclude);
-                let ignoreVaryHeader = _shouldResourceURLBeIncluded(request.url, _myTryCacheIgnoringVaryHeaderResourceURLsToInclude, _myTryCacheIgnoringVaryHeaderResourceURLsToExclude);
-                let responseFromCache = await fetchFromCache(request.url, ignoreURLParams, ignoreVaryHeader);
-                if (responseFromCache != null) {
-                    return responseFromCache;
-                }
-            }
-
-            let ignoreURLParamsAsFallback = _shouldResourceURLBeIncluded(request.url, _myTryCacheIgnoringURLParamsAsFallbackResourceURLsToInclude, _myTryCacheIgnoringURLParamsAsFallbackResourceURLsToExclude);
-            let ignoreVaryHeaderAsFallback = _shouldResourceURLBeIncluded(request.url, _myTryCacheIgnoringVaryHeaderAsFallbackResourceURLsToInclude, _myTryCacheIgnoringVaryHeaderAsFallbackResourceURLsToExclude);
-            if (ignoreURLParamsAsFallback || ignoreVaryHeaderAsFallback) {
-                let fallbackResponseFromCache = await fetchFromCache(request.url, ignoreURLParamsAsFallback, ignoreVaryHeaderAsFallback);
-                if (fallbackResponseFromCache != null) {
-                    if (_myLogEnabled) {
-                        console.warn("Get from cache using a fallback: " + request.url);
-                    }
-
-                    return fallbackResponseFromCache;
-                }
-            }
-        }
-
-        if (responseFromNetwork != null) {
-            return responseFromNetwork;
-        } else {
-            return new Response("Invalid response for " + request.url, {
-                status: 404,
-                headers: { "Content-Type": "text/plain" },
-            });
-        }
-    }
-}
-
-async function cacheResourcesToPrecache(allowRejectOnPrecacheFail = false) {
-    return await _cacheResourcesToPrecache(allowRejectOnPrecacheFail, false, false);
-}
-
-async function fetchFromNetworkAndPutInCache(request, awaitOnlyFetchFromNetwork = false) {
-    return await _fetchFromNetworkAndPutInCache(request, awaitOnlyFetchFromNetwork);
-}
-
-async function fetchFromNetwork(request) {
-    let networkResponse = null;
-
-    try {
-        networkResponse = await fetch(request);
-    } catch (error) {
-        networkResponse = null;
-
-        if (_myLogEnabled) {
-            console.error("An error occurred when trying to fetch from the network: " + request.url);
-        }
-    }
-
-    return networkResponse;
-}
-
-async function fetchFromCache(resourceURL, ignoreURLParams = false, ignoreVaryHeader = false) {
-    let responseFromCache = null;
-
-    try {
-        let currentCacheID = _getCacheID();
-        let hasCache = await caches.has(currentCacheID); // Avoid creating the cache when opening it if it has not already been created
-        if (hasCache) {
-            let currentCache = await caches.open(currentCacheID);
-            responseFromCache = await currentCache.match(resourceURL, { ignoreSearch: ignoreURLParams, ignoreVary: ignoreVaryHeader });
-        }
-    } catch (error) {
-        responseFromCache = null;
-
-        if (_myLogEnabled) {
-            console.error("An error occurred when trying to get from the cache: " + resourceURL);
-        }
-    }
-
-    return responseFromCache;
-}
-
-async function putInCache(request, response) {
-    return await _putInCache(request, response);
-}
-
-async function hasInCache(resourceURL, ignoreURLParams = false, ignoreVaryHeader = false) {
-    let responseFromCache = await fetchFromCache(resourceURL, ignoreURLParams, ignoreVaryHeader);
-    return responseFromCache != null;
-}
-
-async function hasInCacheAllResourcesToPrecache(ignoreURLParams = false, ignoreVaryHeader = false) {
-    let allResourcesToPreacheAreCached = true;
-
-    let resourceURLsToPrecache = getResourceURLsToPrecache();
-    if (resourceURLsToPrecache.length > 0) {
-        try {
-            let currentCacheID = _getCacheID();
-            let hasCache = await caches.has(currentCacheID); // Avoid creating the cache when opening it if it has not already been created
-            if (hasCache) {
-                let currentCache = await caches.open(currentCacheID);
-
-                allResourcesToPreacheAreCached = true;
-                for (let resourceURLToPrecache of resourceURLsToPrecache) {
-                    let resourceCompleteURLToPrecache = new Request(resourceURLToPrecache).url;
-
-                    responseFromCache = await currentCache.match(resourceCompleteURLToPrecache, { ignoreSearch: ignoreURLParams, ignoreVary: ignoreVaryHeader });
-
-                    if (responseFromCache == null) {
-                        allResourcesToPreacheAreCached = false;
-                    }
-                }
-            } else {
-                allResourcesToPreacheAreCached = false;
-            }
-        } catch (error) {
-            allResourcesToPreacheAreCached = false;
-        }
-    }
-
-    return allResourcesToPreacheAreCached;
-}
-
-function getResourceURLsToPrecache() {
-    return _myResourceURLsToPrecache;
-}
-
-// #endregion Service Worker Public Functions
-
-
-
-// #region Service Worker Public Utils
-
-function isResponseOk(response) {
-    return response != null && response.status == 200;
-}
-
-function isResponseOpaque(response) {
-    return response != null && response.status == 0 && response.type.includes("opaque");
-}
-
-function shouldResourceBeCached(request, response) {
-    let cacheResource = _shouldResourceURLBeIncluded(request.url, _myCacheResourceURLsToInclude, _myCacheResourceURLsToExclude);
-    let cacheResourceWithOpaqueResponse = _shouldResourceURLBeIncluded(request.url, _myCacheOpaqueResponseResourceURLsToInclude, _myCacheOpaqueResponseResourceURLsToExclude);
-    return cacheResource && (request.method == "GET" && (isResponseOk(response) || (cacheResourceWithOpaqueResponse && isResponseOpaque(response))));
-}
-
-// #endregion Service Worker Public Utils
-
-
-
-// #region Service Worker Private Functions
+// #region Service Worker Functions
 
 async function _install() {
     let rejectServiceWorker = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myRejectServiceWorkerLocationURLsToInclude, _myRejectServiceWorkerLocationURLsToExclude);
@@ -770,21 +687,260 @@ async function _install() {
 }
 
 async function _activate() {
-    await _copyTempCacheToCurrentCache();
+    try {
+        await _copyTempCacheToCurrentCache();
 
-    await _copyTempRefetchFromNetworkChecklistToCurrentRefetchFromNetworkChecklist();
+        await _copyTempRefetchFromNetworkChecklistToCurrentRefetchFromNetworkChecklist();
 
-    await _deletePreviousCaches();
+        await _deletePreviousCaches();
 
-    await _deletePreviousRefetchFromNetworkChecklists();
+        await _deletePreviousRefetchFromNetworkChecklists();
 
-    if (_myImmediatelyTakeControlOfThePageWhenNotControlled) {
-        self.clients.claim();
+        if (_myReloadAllPagesOnServiceWorkerActivation) {
+            let clients = await self.clients.matchAll();
+            clients.forEach(client => client.navigate(client.url));
+        }
+
+        if (_myImmediatelyTakeControlOfAllPages) {
+            self.clients.claim();
+
+            if (_myReloadAllPagesAfterImmediatelyTakingControlOfThem) {
+                let clients = await self.clients.matchAll();
+                clients.forEach(client => client.navigate(client.url));
+            }
+        }
+    } catch (error) {
+        if (_myRejectServiceWorkerOnActivationFail) {
+            // #WARNING This should unregister the current service worker and reload all the pages, but I'm not
+            // 100% this will actually make sure that this service worker will not be used
+            // Sadly, I've not found a more reliable way to remove the service worker during the activation phase
+            //
+            // It also seems to be a bug in the service worker itself
+            // It is easy to repro on Chrome, u just have to open two tabs controlled by the same service worker, open the inspector,
+            // unregister the service worker and just reload one of the page
+            // Even if the service worker was tagged as deleted, it seems that, since a page was still controlled by it,
+            // when the other page is reloaded the service worker is "resurrected", which should not happen for what I can understand
+            //
+            // By reloading all the pages at the same time this seems to not happen, but I'm not sure if a slight delay in the reloads could
+            // make this bug happen anyway
+
+            let clients = await self.clients.matchAll();
+            await self.registration.unregister();
+            clients.forEach(client => client.navigate(client.url));
+
+            console.error("An error occurred while activating the service worker");
+        }
     }
 }
 
+async function _fetchFromServiceWorker(request) {
+    try {
+        if (_myCheckResourcesHaveBeenPrecachedOnFirstFetch && !_myCheckResourcesHaveBeenPrecachedOnFirstFetchPerformed) {
+            _myCheckResourcesHaveBeenPrecachedOnFirstFetchPerformed = true;
+            _cacheResourcesToPrecache(false, false, false); // Do not await for this, just do it in background
+        }
+
+        if (!_shouldHandleRequest(request)) {
+            return fetch(request);
+        }
+
+        let cacheAlreadyTried = false;
+
+        let refetchFromNetwork = await _shouldResourceBeRefetchedFromNetwork(request.url);
+        let fetchFromCacheAllowed = _shouldResourceURLBeIncluded(request.url, _myFetchFromCacheAllowedResourceURLsToInclude, _myFetchFromCacheAllowedResourceURLsToExclude);
+
+        if (!refetchFromNetwork && fetchFromCacheAllowed) {
+            let tryCacheFirst = _shouldResourceURLBeIncluded(request.url, _myTryCacheFirstResourceURLsToInclude, _myTryCacheFirstResourceURLsToExclude);
+            let forceTryCacheFirstOnNetworkError = _myForceTryCacheFirstOnNetworkErrorEnabled && _shouldResourceURLBeIncluded(request.url, _myForceTryCacheFirstOnNetworkErrorResourceURLsToInclude, _myForceTryCacheFirstOnNetworkErrorResourceURLsToExclude);
+
+            if (tryCacheFirst || forceTryCacheFirstOnNetworkError) {
+                cacheAlreadyTried = true;
+
+                // Try to get the resource from the cache
+                let ignoreURLParams = _shouldResourceURLBeIncluded(request.url, _myTryCacheIgnoringURLParamsResourceURLsToInclude, _myTryCacheIgnoringURLParamsResourceURLsToExclude);
+                let ignoreVaryHeader = _shouldResourceURLBeIncluded(request.url, _myTryCacheIgnoringVaryHeaderResourceURLsToInclude, _myTryCacheIgnoringVaryHeaderResourceURLsToExclude);
+                let responseFromCache = await _fetchFromCache(request.url, ignoreURLParams, ignoreVaryHeader);
+                if (responseFromCache != null) {
+                    let updateCacheInBackground = _shouldResourceURLBeIncluded(request.url, _myUpdateCacheInBackgroundResourceURLsToInclude, _myUpdateCacheInBackgroundResourceURLsToExclude);
+                    if (updateCacheInBackground) {
+                        let updateCacheInBackgroundAllowedForHEADRequests = _shouldResourceURLBeIncluded(request.url, _myUpdateCacheInBackgroundAllowedForHEADRequestsResourceURLsToInclude, _myUpdateCacheInBackgroundAllowedForHEADRequestsResourceURLsToExclude);
+                        if (request.method == "GET" || (request.method == "HEAD" && updateCacheInBackgroundAllowedForHEADRequests)) {
+                            if (request.method == "GET") {
+                                _fetchFromNetworkAndPutInCache(request);
+                            } else if (request.method == "HEAD") {
+                                _fetchFromNetworkAndPutInCache(new Request(request, { method: "GET" }));
+                            }
+                        }
+                    }
+
+                    return responseFromCache;
+                }
+            }
+        }
+
+        // Try to get the resource from the network
+        let [responseFromNetwork, responseHasBeenCached] = await _fetchFromNetworkAndPutInCache(request, true, refetchFromNetwork);
+        if (_isResponseOk(responseFromNetwork) || _isResponseOpaque(responseFromNetwork)) {
+            return responseFromNetwork;
+        } else {
+            if (!_myForceTryCacheFirstOnNetworkErrorEnabled) {
+                let enableForceTryCacheFirstOnNetworkError = _shouldResourceURLBeIncluded(request.url, _myEnableForceTryCacheFirstOnNetworkErrorResourceURLsToInclude, _myEnableForceTryCacheFirstOnNetworkErrorResourceURLsToExclude);
+                if (enableForceTryCacheFirstOnNetworkError) {
+                    _myForceTryCacheFirstOnNetworkErrorEnabled = true;
+
+                    let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
+                    if (logEnabled) {
+                        console.warn("Force try cache on network error enabled");
+                    }
+                }
+            }
+
+            if (fetchFromCacheAllowed) {
+                if (!cacheAlreadyTried) {
+                    let ignoreURLParams = _shouldResourceURLBeIncluded(request.url, _myTryCacheIgnoringURLParamsResourceURLsToInclude, _myTryCacheIgnoringURLParamsResourceURLsToExclude);
+                    let ignoreVaryHeader = _shouldResourceURLBeIncluded(request.url, _myTryCacheIgnoringVaryHeaderResourceURLsToInclude, _myTryCacheIgnoringVaryHeaderResourceURLsToExclude);
+                    let responseFromCache = await _fetchFromCache(request.url, ignoreURLParams, ignoreVaryHeader);
+                    if (responseFromCache != null) {
+                        return responseFromCache;
+                    }
+                }
+
+                let ignoreURLParamsAsFallback = _shouldResourceURLBeIncluded(request.url, _myTryCacheIgnoringURLParamsAsFallbackResourceURLsToInclude, _myTryCacheIgnoringURLParamsAsFallbackResourceURLsToExclude);
+                let ignoreVaryHeaderAsFallback = _shouldResourceURLBeIncluded(request.url, _myTryCacheIgnoringVaryHeaderAsFallbackResourceURLsToInclude, _myTryCacheIgnoringVaryHeaderAsFallbackResourceURLsToExclude);
+                if (ignoreURLParamsAsFallback || ignoreVaryHeaderAsFallback) {
+                    let fallbackResponseFromCache = await _fetchFromCache(request.url, ignoreURLParamsAsFallback, ignoreVaryHeaderAsFallback);
+                    if (fallbackResponseFromCache != null) {
+                        let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
+                        if (logEnabled) {
+                            console.warn("Get from cache using a fallback: " + request.url);
+                        }
+
+                        return fallbackResponseFromCache;
+                    }
+                }
+            }
+
+            // If everything else fail, return the response from the network
+            return responseFromNetwork;
+        }
+    } catch (error) {
+        let errorMessage = "An error occurred while trying to fetch from the service worker: " + request.url + "\n\n" + error;
+        let responseFromServiceWorker = new Response(errorMessage, {
+            status: 500,
+            headers: { "Content-Type": "text/plain" }
+        });
+
+        try {
+            let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
+            if (logEnabled) {
+                console.error(errorMessage);
+            }
+        } catch (error) {
+            // Do nothing
+        }
+
+        return responseFromServiceWorker;
+    }
+}
+
+async function _fetchFromNetworkAndPutInCache(request, awaitOnlyFetchFromNetwork = false, refetchFromNetwork = false, useTemps = false, fetchFromNetworkAllowedOverride = null) {
+    let responseFromNetwork = await _fetchFromNetwork(request, fetchFromNetworkAllowedOverride);
+    let responseHasBeenCached = false;
+
+    if (_isResponseOk(responseFromNetwork) || _isResponseOpaque(responseFromNetwork)) {
+        if (_shouldResourceBeCached(request, responseFromNetwork)) {
+            if (!awaitOnlyFetchFromNetwork) {
+                responseHasBeenCached = await _putInCache(request, responseFromNetwork, useTemps);
+
+                if (refetchFromNetwork) {
+                    await _tickOffFromRefetchFromNetworkChecklist(request.url, useTemps);
+                }
+            } else {
+                _putInCache(request, responseFromNetwork, useTemps).then(function (putInCacheSucceeded) {
+                    if (putInCacheSucceeded && refetchFromNetwork) {
+                        _tickOffFromRefetchFromNetworkChecklist(request.url, useTemps);
+                    }
+                });
+
+                responseHasBeenCached = null; // Not awaiting so we can't know
+            }
+        }
+    }
+
+    return [responseFromNetwork, responseHasBeenCached];
+}
+
+async function _fetchFromNetwork(request, fetchFromNetworkAllowedOverride = null) {
+    let responseFromNetwork = null;
+
+    try {
+        let fetchFromNetworkAllowed = _shouldResourceURLBeIncluded(request.url, _myFetchFromNetworkAllowedResourceURLsToInclude, _myFetchFromNetworkAllowedResourceURLsToExclude);
+        if ((fetchFromNetworkAllowed && fetchFromNetworkAllowedOverride == null) || (fetchFromNetworkAllowedOverride != null && fetchFromNetworkAllowedOverride)) {
+            responseFromNetwork = await fetch(request);
+        } else {
+            throw new Error("Fetch from network is not allowed: " + request.url);
+        }
+    } catch (error) {
+        let errorMessage = "An error occurred while trying to fetch from the network: " + request.url + "\n\n" + error;
+        responseFromNetwork = new Response(errorMessage, {
+            status: 500,
+            headers: { "Content-Type": "text/plain" }
+        });
+
+        let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
+        if (logEnabled) {
+            console.error(errorMessage);
+        }
+    }
+
+    return responseFromNetwork;
+}
+
+async function _fetchFromCache(resourceURL, ignoreURLParams = false, ignoreVaryHeader = false) {
+    let responseFromCache = null;
+
+    try {
+        let currentCacheID = _getCacheID();
+        let hasCache = await caches.has(currentCacheID); // Avoid creating the cache when opening it if it has not already been created
+        if (hasCache) {
+            let currentCache = await caches.open(currentCacheID);
+            responseFromCache = await currentCache.match(resourceURL, { ignoreSearch: ignoreURLParams, ignoreVary: ignoreVaryHeader });
+        }
+    } catch (error) {
+        responseFromCache = null;
+
+        let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
+        if (logEnabled) {
+            console.error("An error occurred while trying to get from the cache: " + resourceURL);
+        }
+    }
+
+    return responseFromCache;
+}
+
+async function _putInCache(request, response, useTempCache = false) {
+    let putInCacheSucceeded = false;
+
+    try {
+        let clonedResponse = response.clone();
+        let currentCacheID = (useTempCache) ? _getTempCacheID() : _getCacheID();
+        let currentCache = await caches.open(currentCacheID);
+        await currentCache.put(request, clonedResponse);
+        putInCacheSucceeded = true;
+    } catch (error) {
+        putInCacheSucceeded = false;
+
+        let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
+        if (logEnabled) {
+            console.error("An error occurred while trying to put the response in the cache: " + request.url);
+        }
+    }
+
+    return putInCacheSucceeded;
+}
+
 async function _cacheResourcesToPrecache(allowRejectOnPrecacheFail = true, useTemps = false, installPhase = false) {
-    if (getResourceURLsToPrecache().length == 0) return;
+    if (_getResourceURLsToPrecache().length == 0) return;
 
     let currentCache = null;
 
@@ -799,9 +955,20 @@ async function _cacheResourcesToPrecache(allowRejectOnPrecacheFail = true, useTe
 
     let currentTempCache = null;
     if (useTemps) {
-        if (installPhase && !_myInstallationShouldRecoverFromLastAttempt) {
-            await caches.delete(_getTempCacheID());
-            await caches.delete(_getTempRefetchFromNetworkChecklistID());
+        if (installPhase && !_myRecoverInstallationFromLastAttempt) {
+            // Explicitly not try catching this to make install fail if it can't be deleted
+
+            let tempCacheID = _getTempCacheID();
+            let tempCacheExists = await caches.has(tempCacheID);
+            let tempCacheDeleted = await caches.delete(tempCacheID);
+
+            let tempRefetchFromNetworkChecklistID = _getTempRefetchFromNetworkChecklistID();
+            let tempRefetchFromNetworkChecklistExists = await caches.has(tempRefetchFromNetworkChecklistID);
+            let tempRefetchFromNetworkChecklistDeleted = await caches.delete(tempRefetchFromNetworkChecklistID);
+
+            if ((tempCacheExists && !tempCacheDeleted) || (tempRefetchFromNetworkChecklistExists && !tempRefetchFromNetworkChecklistDeleted)) {
+                throw new Error("An error occured while trying to delete the temporary data during the installation phase");
+            }
         }
 
         try {
@@ -815,7 +982,7 @@ async function _cacheResourcesToPrecache(allowRejectOnPrecacheFail = true, useTe
     }
 
     let promisesToAwait = [];
-    for (let resourceURLToPrecache of getResourceURLsToPrecache()) {
+    for (let resourceURLToPrecache of _getResourceURLsToPrecache()) {
         let resourceCompleteURLToPrecache = new Request(resourceURLToPrecache).url;
 
         promisesToAwait.push(new Promise(async function (resolve, reject) {
@@ -851,13 +1018,14 @@ async function _cacheResourcesToPrecache(allowRejectOnPrecacheFail = true, useTe
                 }
 
                 if (resourceHaveToBeCached) {
-                    let [responseFromNetwork, responseHasBeenCached] = await _fetchFromNetworkAndPutInCache(new Request(resourceCompleteURLToPrecache), false, refetchFromNetwork, useTemps);
+                    let [responseFromNetwork, responseHasBeenCached] = await _fetchFromNetworkAndPutInCache(new Request(resourceCompleteURLToPrecache), false, refetchFromNetwork, useTemps, installPhase);
                     resourceHasBeenPrecached = responseHasBeenCached;
                 } else {
                     resourceHasBeenPrecached = true; // The resource has been already precached
                 }
             } catch (error) {
-                if (_myLogEnabled) {
+                let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
+                if (logEnabled) {
                     console.error("Failed to fetch resource to precache: " + resourceCompleteURLToPrecache);
                 }
             }
@@ -870,7 +1038,7 @@ async function _cacheResourcesToPrecache(allowRejectOnPrecacheFail = true, useTe
                 if (!rejectServiceWorkerOnPrecacheFail) {
                     resolve();
                 } else {
-                    reject();
+                    reject("Failed to fetch resource to precache: " + resourceCompleteURLToPrecache);
                 }
             }
         }));
@@ -879,64 +1047,21 @@ async function _cacheResourcesToPrecache(allowRejectOnPrecacheFail = true, useTe
     await Promise.all(promisesToAwait);
 }
 
-async function _fetchFromNetworkAndPutInCache(request, awaitOnlyFetchFromNetwork = false, refetchFromNetwork = false, useTemps = false) {
-    let responseFromNetwork = await fetchFromNetwork(request);
-    let responseHasBeenCached = false;
-
-    if (isResponseOk(responseFromNetwork) || isResponseOpaque(responseFromNetwork)) {
-        if (shouldResourceBeCached(request, responseFromNetwork)) {
-            if (!awaitOnlyFetchFromNetwork) {
-                responseHasBeenCached = await _putInCache(request, responseFromNetwork, useTemps);
-
-                if (refetchFromNetwork) {
-                    await _tickOffFromRefetchFromNetworkChecklist(request.url, useTemps);
-                }
-            } else {
-                _putInCache(request, responseFromNetwork, useTemps).then(function (putInCacheSucceeded) {
-                    if (putInCacheSucceeded && refetchFromNetwork) {
-                        _tickOffFromRefetchFromNetworkChecklist(request.url, useTemps);
-                    }
-                });
-
-                responseHasBeenCached = null; // Not awaiting so we can't know
-            }
-        }
-    }
-
-    return [responseFromNetwork, responseHasBeenCached];
-}
-
-async function _putInCache(request, response, useTempCache = false) {
-    let putInCacheSucceeded = false;
-
-    try {
-        let clonedResponse = response.clone();
-        let currentCacheID = (useTempCache) ? _getTempCacheID() : _getCacheID();
-        let currentCache = await caches.open(currentCacheID);
-        await currentCache.put(request, clonedResponse);
-        putInCacheSucceeded = true;
-    } catch (error) {
-        putInCacheSucceeded = false;
-
-        if (_myLogEnabled) {
-            console.error("An error occurred when trying to put the response in the cache: " + request.url);
-        }
-    }
-
-    return putInCacheSucceeded;
-}
-
 async function _deletePreviousCaches() {
-    let cachesIDs = await caches.keys();
+    try {
+        let cachesIDs = await caches.keys();
 
-    for (let cacheID of cachesIDs) {
-        try {
-            if (_shouldDeleteCacheID(cacheID)) {
-                await caches.delete(cacheID);
+        for (let cacheID of cachesIDs) {
+            try {
+                if (_shouldDeleteCacheID(cacheID)) {
+                    await caches.delete(cacheID);
+                }
+            } catch (error) {
+                // Do nothing
             }
-        } catch (error) {
-            // Do nothing
         }
+    } catch (error) {
+        // Do nothing
     }
 }
 
@@ -946,23 +1071,28 @@ async function _tickOffFromRefetchFromNetworkChecklist(resourceURL, useTempRefet
         let refetchChecklist = await caches.open(refetechChecklistID);
         await refetchChecklist.put(new Request(resourceURL), new Response(null));
     } catch (error) {
-        if (_myLogEnabled) {
-            console.error("An error occurred when trying to put the response in the cache: " + request.url);
+        let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
+        if (logEnabled) {
+            console.error("An error occurred while trying to put the response in the cache: " + request.url);
         }
     }
 }
 
 async function _deletePreviousRefetchFromNetworkChecklists() {
-    let cachesIDs = await caches.keys();
+    try {
+        let cachesIDs = await caches.keys();
 
-    for (let cacheID of cachesIDs) {
-        try {
-            if (_shouldDeleteRefetchFromNetworkChecklistID(cacheID)) {
-                await caches.delete(cacheID);
+        for (let cacheID of cachesIDs) {
+            try {
+                if (_shouldDeleteRefetchFromNetworkChecklistID(cacheID)) {
+                    await caches.delete(cacheID);
+                }
+            } catch (error) {
+                // Do nothing
             }
-        } catch (error) {
-            // Do nothing
         }
+    } catch (error) {
+        // Do nothing
     }
 }
 
@@ -971,30 +1101,41 @@ async function _copyTempCacheToCurrentCache() {
 
     try {
         let hasTempCache = await caches.has(currentTempCacheID);
-
         if (hasTempCache) {
             let currentTempCache = await caches.open(currentTempCacheID);
             let currentCache = await caches.open(_getCacheID());
 
             let currentTempCachedResourceRequests = await currentTempCache.keys();
             for (let currentTempCachedResourceRequest of currentTempCachedResourceRequests) {
-                let currentTempCachedResource = await currentTempCache.match(currentTempCachedResourceRequest);
-                await currentCache.put(currentTempCachedResourceRequest, currentTempCachedResource);
+                try {
+                    let currentTempCachedResource = await currentTempCache.match(currentTempCachedResourceRequest);
+                    await currentCache.put(currentTempCachedResourceRequest, currentTempCachedResource);
+                } catch (error) {
+                    if (_myRejectServiceWorkerOnActivationFail) {
+                        throw error;
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        if (_myRejectServiceWorkerOnActivationFail) {
+            throw error;
+        }
+    }
+
+    try {
+        let cachesIDs = await caches.keys();
+        for (let cacheID of cachesIDs) {
+            try {
+                if (_shouldDeleteTempCacheID(cacheID)) {
+                    await caches.delete(cacheID);
+                }
+            } catch (error) {
+                // Do nothing
             }
         }
     } catch (error) {
         // Do nothing
-    }
-
-    let cachesIDs = await caches.keys();
-    for (let cacheID of cachesIDs) {
-        try {
-            if (_shouldDeleteTempCacheID(cacheID)) {
-                await caches.delete(cacheID);
-            }
-        } catch (error) {
-            // Do nothing
-        }
     }
 }
 
@@ -1003,42 +1144,72 @@ async function _copyTempRefetchFromNetworkChecklistToCurrentRefetchFromNetworkCh
 
     try {
         let hasTempRefetchFromNetworkChecklist = await caches.has(currentTempRefetchFromNetworkChecklistID);
-
         if (hasTempRefetchFromNetworkChecklist) {
             let currentTempRefetchFromNetworkChecklist = await caches.open(currentTempRefetchFromNetworkChecklistID);
             let currentRefetchFromNetworkChecklist = await caches.open(_getRefetchFromNetworkChecklistID());
 
             let currentTempRefetchFromNetworkChecklistResourceRequests = await currentTempRefetchFromNetworkChecklist.keys();
             for (let currentTempRefetchFromNetworkChecklistResourceRequest of currentTempRefetchFromNetworkChecklistResourceRequests) {
-                let currentTempRefetchFromNetworkChecklistResource = await currentTempRefetchFromNetworkChecklist.match(currentTempRefetchFromNetworkChecklistResourceRequest);
-                await currentRefetchFromNetworkChecklist.put(currentTempRefetchFromNetworkChecklistResourceRequest, currentTempRefetchFromNetworkChecklistResource);
+                try {
+                    let currentTempRefetchFromNetworkChecklistResource = await currentTempRefetchFromNetworkChecklist.match(currentTempRefetchFromNetworkChecklistResourceRequest);
+                    await currentRefetchFromNetworkChecklist.put(currentTempRefetchFromNetworkChecklistResourceRequest, currentTempRefetchFromNetworkChecklistResource);
+                } catch (error) {
+                    if (_myRejectServiceWorkerOnActivationFail) {
+                        throw error;
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        if (_myRejectServiceWorkerOnActivationFail) {
+            throw error;
+        }
+    }
+
+    try {
+        let cachesIDs = await caches.keys();
+        for (let cacheID of cachesIDs) {
+            try {
+                if (_shouldDeleteTempRefetchFromNetworkChecklistID(cacheID)) {
+                    await caches.delete(cacheID);
+                }
+            } catch (error) {
+                // Do nothing
             }
         }
     } catch (error) {
         // Do nothing
     }
-
-    let cachesIDs = await caches.keys();
-    for (let cacheID of cachesIDs) {
-        try {
-            if (_shouldDeleteTempRefetchFromNetworkChecklistID(cacheID)) {
-                await caches.delete(cacheID);
-            }
-        } catch (error) {
-            // Do nothing
-        }
-    }
 }
 
-// #endregion Service Worker Private Functions
+function _getResourceURLsToPrecache() {
+    return _myResourceURLsToPrecache;
+}
+
+// #endregion Service Worker Functions
 
 
 
-// #region Service Worker Private Utils
+// #region Service Worker Utils
+
+function _isResponseOk(response) {
+    return response != null && response.status == 200;
+}
+
+function _isResponseOpaque(response) {
+    return response != null && response.status == 0 && response.type.includes("opaque");
+}
+
+function _shouldResourceBeCached(request, response) {
+    let cacheResource = _shouldResourceURLBeIncluded(request.url, _myPutInCacheResourceURLsToInclude, _myPutInCacheResourceURLsToExclude);
+    let cacheResourceWithOpaqueResponseAllowed = _shouldResourceURLBeIncluded(request.url, _myPutInCacheAllowedForOpaqueResponsesResourceURLsToInclude, _myPutInCacheAllowedForOpaqueResponsesResourceURLsToExclude);
+    return cacheResource && (request.method == "GET" && (_isResponseOk(response) || (cacheResourceWithOpaqueResponseAllowed && _isResponseOpaque(response))));
+}
 
 function _shouldHandleRequest(request) {
+    let handleHEADRequest = _shouldResourceURLBeIncluded(request.url, _myHandleHEADRequestsResourceURLsToInclude, _myHandleHEADRequestsResourceURLsToExclude);
     return request != null && request.url != null && request.method != null &&
-        (request.method == "GET" || (_myAllowHEADRequestsToFetchFromCache && request.method == "HEAD"));
+        (request.method == "GET" || (handleHEADRequest && request.method == "HEAD"));
 }
 
 function _getCacheID(cacheVersion = _myCacheVersion) {
@@ -1046,7 +1217,7 @@ function _getCacheID(cacheVersion = _myCacheVersion) {
 }
 
 function _getTempCacheID(cacheVersion = _myCacheVersion, serviceWorkerVersion = _myServiceWorkerVersion) {
-    serviceWorkerVersion = (_myShareInstallationTemporaryDataBetweenServiceWorkers && _myInstallationShouldRecoverFromLastAttempt) ? 0 : serviceWorkerVersion;
+    serviceWorkerVersion = (_myInstallationTemporaryDataSharingEnabled && _myRecoverInstallationFromLastAttempt) ? 0 : serviceWorkerVersion;
     return _getCacheID(cacheVersion) + "_temp_v" + serviceWorkerVersion.toFixed(0);
 }
 
@@ -1055,7 +1226,7 @@ function _getRefetchFromNetworkChecklistID(cacheVersion = _myCacheVersion, refet
 }
 
 function _getTempRefetchFromNetworkChecklistID(cacheVersion = _myCacheVersion, refetchFromNetworkVersion = _myRefetchFromNetworkVersion, serviceWorkerVersion = _myServiceWorkerVersion) {
-    serviceWorkerVersion = (_myShareInstallationTemporaryDataBetweenServiceWorkers && _myInstallationShouldRecoverFromLastAttempt) ? 0 : serviceWorkerVersion;
+    serviceWorkerVersion = (_myInstallationTemporaryDataSharingEnabled && _myRecoverInstallationFromLastAttempt) ? 0 : serviceWorkerVersion;
     return _getRefetchFromNetworkChecklistID(cacheVersion, refetchFromNetworkVersion) + "_temp_v" + serviceWorkerVersion.toFixed(0);
 }
 
@@ -1182,19 +1353,20 @@ async function _shouldResourceBeRefetchedFromNetwork(resourceURL, checkTempRefet
     } catch (error) {
         refetchResourceFromNetwork = false;
 
-        if (_myLogEnabled) {
-            console.error("An error occurred when trying to check if the resource should be refetched: " + request.url);
+        let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
+        if (logEnabled) {
+            console.error("An error occurred while trying to check if the resource should be refetched: " + request.url);
         }
     }
 
     return refetchResourceFromNetwork;
 }
 
-// #endregion Service Worker Private Utils
+// #endregion Service Worker Utils
 
 
 
-// #region Cauldron Private Utils
+// #region Cauldron Utils
 
 function _shouldResourceURLBeIncluded(resourceURL, includeList, excludeList) {
     let includeResourseURL = false;
@@ -1230,4 +1402,4 @@ function _escapeRegexSpecialCharacters(regexToEscape) {
     return regexToEscape.replace(escapeSpecialCharacters, "\\$&");
 }
 
-// #endregion Cauldron Private Utils
+// #endregion Cauldron Utils
