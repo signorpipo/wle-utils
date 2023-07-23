@@ -13,7 +13,7 @@ let _myResourceURLsToPrecache = [];
 // If u are not sure if it is a good idea to cache resources which are not coming from your own location,
 // which basically means the ones uploaded by u on your domain,
 // u can enable this to cache only the ones coming from the current location
-let _myCacheOnlyResourcesFromCurrentLocation = false;
+let _myPutInCacheOnlyResourcesFromCurrentLocation = false;
 
 // Try the cache first, and only if it fails fetch from the network
 let _myTryCacheFirst = false;
@@ -51,14 +51,15 @@ let _myLogEnabled = false;
 
 // #region Service Worker Constants
 
-let _ANY_RESOURCE = [".*"];
+let _EVERY_RESOURCE = [".*"];
 let _NO_RESOURCE = [];
 
-let _ANY_RESOURCE_FROM_CURRENT_LOCATION = ["^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + ".*"];
-let _ANY_RESOURCE_FROM_CURRENT_ORIGIN = ["^" + _escapeRegexSpecialCharacters(_getCurrentOrigin()) + ".*"];
+let _EVERY_RESOURCE_FROM_CURRENT_LOCATION = ["^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + ".*"];
+let _EVERY_RESOURCE_FROM_CURRENT_ORIGIN = ["^" + _escapeRegexSpecialCharacters(_getCurrentOrigin()) + ".*"];
 
-let _LOCALHOST = ["localhost:8080"];
+let _EVERY_LOCATION = [".*"];
 let _NO_LOCATION = [];
+let _LOCALHOST = ["localhost:8080"];
 
 // #endregion Service Worker Constants
 
@@ -83,196 +84,14 @@ self.addEventListener("activate", function (event) {
 });
 
 self.addEventListener("fetch", function (event) {
-    event.respondWith(fetchFromServiceWorker(event.request));
+    event.respondWith(_fetchFromServiceWorker(event.request));
 });
 
 // #endregion Service Worker Events
 
 
 
-// #region Service Worker Public Functions
-
-async function fetchFromServiceWorker(request) {
-    if (!_shouldHandleRequest(request)) {
-        return fetch(request);
-    }
-
-    let cacheAlreadyTried = false;
-    if (_myTryCacheFirst || _myForceTryCacheFirstOnNetworkErrorEnabled) {
-        cacheAlreadyTried = true;
-
-        // Try to get the resource from the cache
-        try {
-            let responseFromCache = await fetchFromCache(request.url);
-            if (responseFromCache != null) {
-                if (_myUpdateCacheInBackground) {
-                    _fetchFromNetworkAndPutInCache(request);
-                }
-
-                return responseFromCache;
-            }
-        } catch (error) {
-            // Do nothing, possibly get from cache failed so we should go on and try with the network
-        }
-    }
-
-    // Try to get the resource from the network
-    let [responseFromNetwork, responseHasBeenCached] = await _fetchFromNetworkAndPutInCache(request, true);
-    if (isResponseOk(responseFromNetwork) || isResponseOpaque(responseFromNetwork)) {
-        return responseFromNetwork;
-    } else {
-        if (!_myForceTryCacheFirstOnNetworkErrorEnabled) {
-            let enableForceTryCacheFirstOnNetworkError = _myForceTryCacheFirstOnNetworkErrorFromCurrentLocation && _shouldResourceURLBeIncluded(request.url, _ANY_RESOURCE_FROM_CURRENT_LOCATION, _NO_RESOURCE);
-            if (enableForceTryCacheFirstOnNetworkError) {
-                _myForceTryCacheFirstOnNetworkErrorEnabled = true;
-
-                if (_myLogEnabled) {
-                    console.warn("Force try cache on network error enabled");
-                }
-            }
-        }
-
-        if (!cacheAlreadyTried) {
-            let responseFromCache = await fetchFromCache(request.url);
-            if (responseFromCache != null) {
-                return responseFromCache;
-            }
-        }
-
-
-        let ignoreURLParamsAsFallback = _myTryCacheIgnoringURLParamsForResourcesFromCurrentLocationAsFallback && _shouldResourceURLBeIncluded(request.url, _ANY_RESOURCE_FROM_CURRENT_LOCATION, _NO_RESOURCE);
-        if (ignoreURLParamsAsFallback) {
-            let responseFromCache = await fetchFromCache(request.url, ignoreURLParamsAsFallback);
-            if (responseFromCache != null) {
-                return responseFromCache;
-            }
-        }
-
-        if (responseFromNetwork != null) {
-            return responseFromNetwork;
-        } else {
-            return new Response("Invalid response for " + request.url, {
-                status: 404,
-                headers: { "Content-Type": "text/plain" },
-            });
-        }
-    }
-}
-
-async function cacheResourcesToPrecache(allowRejectOnPrecacheFail = false) {
-    return await _cacheResourcesToPrecache(allowRejectOnPrecacheFail, false);
-}
-
-async function fetchFromNetworkAndPutInCache(request, awaitOnlyFetchFromNetwork = false) {
-    return await _fetchFromNetworkAndPutInCache(request, awaitOnlyFetchFromNetwork);
-}
-
-async function fetchFromNetwork(request) {
-    let networkResponse = null;
-
-    try {
-        networkResponse = await fetch(request);
-    } catch (error) {
-        networkResponse = null;
-
-        if (_myLogEnabled) {
-            console.error("An error occurred when trying to fetch from the network: " + request.url);
-        }
-    }
-
-    return networkResponse;
-}
-
-async function fetchFromCache(resourceURL, ignoreURLParams = false, ignoreVaryHeader = false) {
-    let responseFromCache = null;
-
-    try {
-        let currentCacheID = _getCacheID();
-        let hasCache = await caches.has(currentCacheID); // Avoid creating the cache when opening it if it has not already been created
-        if (hasCache) {
-            let currentCache = await caches.open(currentCacheID);
-            responseFromCache = await currentCache.match(resourceURL, { ignoreSearch: ignoreURLParams, ignoreVary: ignoreVaryHeader });
-        }
-    } catch (error) {
-        responseFromCache = null;
-
-        if (_myLogEnabled) {
-            console.error("An error occurred when trying to get from the cache: " + resourceURL);
-        }
-    }
-
-    return responseFromCache;
-}
-
-async function putInCache(request, response) {
-    return await _putInCache(request, response);
-}
-
-async function hasInCache(resourceURL, ignoreURLParams = false, ignoreVaryHeader = false) {
-    let responseFromCache = await fetchFromCache(resourceURL, ignoreURLParams, ignoreVaryHeader);
-    return responseFromCache != null;
-}
-
-async function hasInCacheAllResourcesToPrecache(ignoreURLParams = false, ignoreVaryHeader = false) {
-    let allResourcesToPreacheAreCached = true;
-
-    let resourceURLsToPrecache = getResourceURLsToPrecache();
-    if (resourceURLsToPrecache.length > 0) {
-        try {
-            let currentCacheID = _getCacheID();
-            let hasCache = await caches.has(currentCacheID); // Avoid creating the cache when opening it if it has not already been created
-            if (hasCache) {
-                let currentCache = await caches.open(currentCacheID);
-
-                allResourcesToPreacheAreCached = true;
-                for (let resourceURLToPrecache of resourceURLsToPrecache) {
-                    let resourceCompleteURLToPrecache = new Request(resourceURLToPrecache).url;
-
-                    responseFromCache = await currentCache.match(resourceCompleteURLToPrecache, { ignoreSearch: ignoreURLParams, ignoreVary: ignoreVaryHeader });
-
-                    if (responseFromCache == null) {
-                        allResourcesToPreacheAreCached = false;
-                    }
-                }
-            } else {
-                allResourcesToPreacheAreCached = false;
-            }
-        } catch (error) {
-            allResourcesToPreacheAreCached = false;
-        }
-    }
-
-    return allResourcesToPreacheAreCached;
-}
-
-function getResourceURLsToPrecache() {
-    return _myResourceURLsToPrecache;
-}
-
-// #endregion Service Worker Public Functions
-
-
-
-// #region Service Worker Public Utils
-
-function isResponseOk(response) {
-    return response != null && response.status == 200;
-}
-
-function isResponseOpaque(response) {
-    return response != null && response.status == 0 && response.type.includes("opaque");
-}
-
-function shouldResourceBeCached(request, response) {
-    let cacheResource = !_myCacheOnlyResourcesFromCurrentLocation || _shouldResourceURLBeIncluded(request.url, _ANY_RESOURCE_FROM_CURRENT_LOCATION, _NO_RESOURCE);
-    return cacheResource && (request.method == "GET" && isResponseOk(response));
-}
-
-// #endregion Service Worker Public Utils
-
-
-
-// #region Service Worker Private Functions
+// #region Service Worker Functions
 
 async function _install() {
     if (_myRejectServiceWorkerOnLocalhost) {
@@ -282,7 +101,7 @@ async function _install() {
         }
     }
 
-    await _cacheResourcesToPrecache(true, true);
+    await _cacheResourcesToPrecache();
 }
 
 async function _activate() {
@@ -291,8 +110,166 @@ async function _activate() {
     await _deletePreviousCaches();
 }
 
-async function _cacheResourcesToPrecache(allowRejectOnPrecacheFail = true, useTemps = false) {
-    if (getResourceURLsToPrecache().length == 0) return;
+async function _fetchFromServiceWorker(request) {
+    try {
+        if (!_shouldHandleRequest(request)) {
+            return fetch(request);
+        }
+
+        let cacheAlreadyTried = false;
+        if (_myTryCacheFirst || _myForceTryCacheFirstOnNetworkErrorEnabled) {
+            cacheAlreadyTried = true;
+
+            // Try to get the resource from the cache
+            let responseFromCache = await _fetchFromCache(request.url);
+            if (responseFromCache != null) {
+                if (_myUpdateCacheInBackground) {
+                    _fetchFromNetworkAndPutInCache(request);
+                }
+
+                return responseFromCache;
+            }
+        }
+
+        // Try to get the resource from the network
+        let [responseFromNetwork, responseHasBeenCached] = await _fetchFromNetworkAndPutInCache(request, true);
+        if (_isResponseOk(responseFromNetwork) || _isResponseOpaque(responseFromNetwork)) {
+            return responseFromNetwork;
+        } else {
+            if (!_myForceTryCacheFirstOnNetworkErrorEnabled) {
+                let enableForceTryCacheFirstOnNetworkError = _myForceTryCacheFirstOnNetworkErrorFromCurrentLocation && _shouldResourceURLBeIncluded(request.url, _EVERY_RESOURCE_FROM_CURRENT_LOCATION, _NO_RESOURCE);
+                if (enableForceTryCacheFirstOnNetworkError) {
+                    _myForceTryCacheFirstOnNetworkErrorEnabled = true;
+
+                    if (_myLogEnabled) {
+                        console.warn("Force try cache on network error enabled");
+                    }
+                }
+            }
+
+            if (!cacheAlreadyTried) {
+                let responseFromCache = await _fetchFromCache(request.url);
+                if (responseFromCache != null) {
+                    return responseFromCache;
+                }
+            }
+
+            let ignoreURLParamsAsFallback = _myTryCacheIgnoringURLParamsForResourcesFromCurrentLocationAsFallback && _shouldResourceURLBeIncluded(request.url, _EVERY_RESOURCE_FROM_CURRENT_LOCATION, _NO_RESOURCE);
+            if (ignoreURLParamsAsFallback) {
+                let fallbackResponseFromCache = await _fetchFromCache(request.url, ignoreURLParamsAsFallback);
+                if (fallbackResponseFromCache != null) {
+                    if (_myLogEnabled) {
+                        console.warn("Get from cache using a fallback: " + request.url);
+                    }
+
+                    return fallbackResponseFromCache;
+                }
+            }
+
+            // If everything else fail, return the response from the network
+            return responseFromNetwork;
+        }
+    } catch (error) {
+        let errorMessage = "An error occurred while trying to fetch from the service worker: " + request?.url + "\n\n" + error;
+        let responseFromServiceWorker = new Response(errorMessage, {
+            status: 500,
+            headers: { "Content-Type": "text/plain" }
+        });
+
+        try {
+            if (_myLogEnabled) {
+                console.error(errorMessage);
+            }
+        } catch (error) {
+            // Do nothing
+        }
+
+        return responseFromServiceWorker;
+    }
+}
+
+async function _fetchFromNetworkAndPutInCache(request, awaitOnlyFetchFromNetwork = false, useTempCache = false) {
+    let responseFromNetwork = await _fetchFromNetwork(request);
+    let responseHasBeenCached = false;
+
+    if (_isResponseOk(responseFromNetwork) || _isResponseOpaque(responseFromNetwork)) {
+        if (_shouldResourceBeCached(request, responseFromNetwork)) {
+            if (!awaitOnlyFetchFromNetwork) {
+                responseHasBeenCached = await _putInCache(request, responseFromNetwork, useTempCache);
+            } else {
+                _putInCache(request, responseFromNetwork, useTempCache);
+
+                responseHasBeenCached = null; // Not awaiting so we can't know
+            }
+        }
+    }
+
+    return [responseFromNetwork, responseHasBeenCached];
+}
+
+async function _fetchFromNetwork(request) {
+    let responseFromNetwork = null;
+
+    try {
+        responseFromNetwork = await fetch(request);
+    } catch (error) {
+        let errorMessage = "An error occurred while trying to fetch from the network: " + request.url + "\n\n" + error;
+        responseFromNetwork = new Response(errorMessage, {
+            status: 500,
+            headers: { "Content-Type": "text/plain" }
+        });
+
+        if (_myLogEnabled) {
+            console.error(errorMessage);
+        }
+    }
+
+    return responseFromNetwork;
+}
+
+async function _fetchFromCache(resourceURL, ignoreURLParams = false) {
+    let responseFromCache = null;
+
+    try {
+        let currentCacheID = _getCacheID();
+        let hasCache = await caches.has(currentCacheID); // Avoid creating the cache when opening it if it has not already been created
+        if (hasCache) {
+            let currentCache = await caches.open(currentCacheID);
+            responseFromCache = await currentCache.match(resourceURL, { ignoreSearch: ignoreURLParams });
+        }
+    } catch (error) {
+        responseFromCache = null;
+
+        if (_myLogEnabled) {
+            console.error("An error occurred while trying to get from the cache: " + resourceURL);
+        }
+    }
+
+    return responseFromCache;
+}
+
+async function _putInCache(request, response, useTempCache = false) {
+    let putInCacheSucceeded = false;
+
+    try {
+        let clonedResponse = response.clone();
+        let currentCacheID = (useTempCache) ? _getTempCacheID() : _getCacheID();
+        let currentCache = await caches.open(currentCacheID);
+        await currentCache.put(request, clonedResponse);
+        putInCacheSucceeded = true;
+    } catch (error) {
+        putInCacheSucceeded = false;
+
+        if (_myLogEnabled) {
+            console.error("An error occurred while trying to put the response in the cache: " + request.url);
+        }
+    }
+
+    return putInCacheSucceeded;
+}
+
+async function _cacheResourcesToPrecache() {
+    if (_getResourceURLsToPrecache().length == 0) return;
 
     let currentCache = null;
 
@@ -306,19 +283,17 @@ async function _cacheResourcesToPrecache(allowRejectOnPrecacheFail = true, useTe
     }
 
     let currentTempCache = null;
-    if (useTemps) {
-        try {
-            let tempCacheAlreadyExists = await caches.has(_getTempCacheID());
-            if (tempCacheAlreadyExists) {
-                currentTempCache = await caches.open(_getTempCacheID());
-            }
-        } catch (error) {
-            currentTempCache = null;
+    try {
+        let tempCacheAlreadyExists = await caches.has(_getTempCacheID());
+        if (tempCacheAlreadyExists) {
+            currentTempCache = await caches.open(_getTempCacheID());
         }
+    } catch (error) {
+        currentTempCache = null;
     }
 
     let promisesToAwait = [];
-    for (let resourceURLToPrecache of getResourceURLsToPrecache()) {
+    for (let resourceURLToPrecache of _getResourceURLsToPrecache()) {
         let resourceCompleteURLToPrecache = new Request(resourceURLToPrecache).url;
 
         promisesToAwait.push(new Promise(async function (resolve, reject) {
@@ -333,22 +308,18 @@ async function _cacheResourcesToPrecache(allowRejectOnPrecacheFail = true, useTe
                 }
 
                 if (!resourceAlreadyInCache) {
-                    if (!useTemps) {
-                        resourceHaveToBeCached = true;
-                    } else {
-                        let resourceAlreadyInTempCache = false;
-                        if (currentTempCache != null) {
-                            resourceAlreadyInTempCache = await currentTempCache.match(resourceCompleteURLToPrecache) != null;
-                        }
+                    let resourceAlreadyInTempCache = false;
+                    if (currentTempCache != null) {
+                        resourceAlreadyInTempCache = await currentTempCache.match(resourceCompleteURLToPrecache) != null;
+                    }
 
-                        if (!resourceAlreadyInTempCache) {
-                            resourceHaveToBeCached = true;
-                        }
+                    if (!resourceAlreadyInTempCache) {
+                        resourceHaveToBeCached = true;
                     }
                 }
 
                 if (resourceHaveToBeCached) {
-                    let [responseFromNetwork, responseHasBeenCached] = await _fetchFromNetworkAndPutInCache(new Request(resourceCompleteURLToPrecache), false, useTemps);
+                    let [responseFromNetwork, responseHasBeenCached] = await _fetchFromNetworkAndPutInCache(new Request(resourceCompleteURLToPrecache), false, true);
                     resourceHasBeenPrecached = responseHasBeenCached;
                 } else {
                     resourceHasBeenPrecached = true; // The resource has been already precached
@@ -366,96 +337,85 @@ async function _cacheResourcesToPrecache(allowRejectOnPrecacheFail = true, useTe
     await Promise.all(promisesToAwait);
 }
 
-async function _fetchFromNetworkAndPutInCache(request, awaitOnlyFetchFromNetwork = false, useTemps = false) {
-    let responseFromNetwork = await fetchFromNetwork(request);
-    let responseHasBeenCached = false;
-
-    if (isResponseOk(responseFromNetwork) || isResponseOpaque(responseFromNetwork)) {
-        if (shouldResourceBeCached(request, responseFromNetwork)) {
-            if (!awaitOnlyFetchFromNetwork) {
-                responseHasBeenCached = await _putInCache(request, responseFromNetwork, useTemps);
-            } else {
-                _putInCache(request, responseFromNetwork, useTemps);
-
-                responseHasBeenCached = null; // Not awaiting so we can't know
-            }
-        }
-    }
-
-    return [responseFromNetwork, responseHasBeenCached];
-}
-
-async function _putInCache(request, response, useTempCache = false) {
-    let putInCacheSucceeded = false;
-
-    try {
-        let clonedResponse = response.clone();
-        let currentCacheID = (useTempCache) ? _getTempCacheID() : _getCacheID();
-        let currentCache = await caches.open(currentCacheID);
-        await currentCache.put(request, clonedResponse);
-        putInCacheSucceeded = true;
-    } catch (error) {
-        putInCacheSucceeded = false;
-
-        if (_myLogEnabled) {
-            console.error("An error occurred when trying to put the response in the cache: " + request.url);
-        }
-    }
-
-    return putInCacheSucceeded;
-}
-
-async function _deletePreviousCaches() {
-    let cachesIDs = await caches.keys();
-
-    for (let cacheID of cachesIDs) {
-        try {
-            if (_shouldDeleteCacheID(cacheID)) {
-                await caches.delete(cacheID);
-            }
-        } catch (error) {
-            // Do nothing
-        }
-    }
-}
-
 async function _copyTempCacheToCurrentCache() {
     let currentTempCacheID = _getTempCacheID();
 
     try {
         let hasTempCache = await caches.has(currentTempCacheID);
-
         if (hasTempCache) {
             let currentTempCache = await caches.open(currentTempCacheID);
             let currentCache = await caches.open(_getCacheID());
 
             let currentTempCachedResourceRequests = await currentTempCache.keys();
             for (let currentTempCachedResourceRequest of currentTempCachedResourceRequests) {
-                let currentTempCachedResource = await currentTempCache.match(currentTempCachedResourceRequest);
-                await currentCache.put(currentTempCachedResourceRequest, currentTempCachedResource);
+                try {
+                    let currentTempCachedResource = await currentTempCache.match(currentTempCachedResourceRequest);
+                    await currentCache.put(currentTempCachedResourceRequest, currentTempCachedResource);
+                } catch (error) {
+                    // Do nothing
+                }
             }
         }
     } catch (error) {
         // Do nothing
     }
 
-    let cachesIDs = await caches.keys();
-    for (let cacheID of cachesIDs) {
-        try {
-            if (_shouldDeleteTempCacheID(cacheID)) {
-                await caches.delete(cacheID);
+    try {
+        let cachesIDs = await caches.keys();
+        for (let cacheID of cachesIDs) {
+            try {
+                if (_shouldDeleteTempCacheID(cacheID)) {
+                    await caches.delete(cacheID);
+                }
+            } catch (error) {
+                // Do nothing
             }
-        } catch (error) {
-            // Do nothing
         }
+    } catch (error) {
+        // Do nothing
     }
 }
 
-// #endregion Service Worker Private Functions
+async function _deletePreviousCaches() {
+    try {
+        let cachesIDs = await caches.keys();
+
+        for (let cacheID of cachesIDs) {
+            try {
+                if (_shouldDeleteCacheID(cacheID)) {
+                    await caches.delete(cacheID);
+                }
+            } catch (error) {
+                // Do nothing
+            }
+        }
+    } catch (error) {
+        // Do nothing
+    }
+}
+
+function _getResourceURLsToPrecache() {
+    return _myResourceURLsToPrecache;
+}
+
+// #endregion Service Worker Functions
 
 
 
-// #region Service Worker Private Utils
+// #region Service Worker Utils
+
+function _isResponseOk(response) {
+    return response != null && response.status == 200;
+}
+
+function _isResponseOpaque(response) {
+    return response != null && response.status == 0 && response.type.includes("opaque");
+}
+
+function _shouldResourceBeCached(request, response) {
+    let cacheResource = !_myPutInCacheOnlyResourcesFromCurrentLocation || _shouldResourceURLBeIncluded(request.url, _EVERY_RESOURCE_FROM_CURRENT_LOCATION, _NO_RESOURCE);
+    return cacheResource && (request.method == "GET" && _isResponseOk(response));
+}
 
 function _shouldHandleRequest(request) {
     return request != null && request.url != null && request.method != null && request.method == "GET";
@@ -511,11 +471,11 @@ function _shouldDeleteTempCacheID(tempCacheID) {
     return deleteTempCacheID;
 }
 
-// #endregion Service Worker Private Utils
+// #endregion Service Worker Utils
 
 
 
-// #region Cauldron Private Utils
+// #region Cauldron Utils
 
 function _shouldResourceURLBeIncluded(resourceURL, includeList, excludeList) {
     let includeResourseURL = false;
@@ -551,4 +511,4 @@ function _escapeRegexSpecialCharacters(regexToEscape) {
     return regexToEscape.replace(escapeSpecialCharacters, "\\$&");
 }
 
-// #endregion Cauldron Private Utils
+// #endregion Cauldron Utils
