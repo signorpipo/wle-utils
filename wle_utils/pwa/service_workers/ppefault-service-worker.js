@@ -133,8 +133,6 @@ let _myRejectServiceWorkerLocationURLsToExclude = _NO_LOCATION;
 
 // Enable some extra logs to better understand what's going on and why things might not be working
 //
-// Note that some of the logs, in particular the ones that just log once, will be logged anyway
-//
 // The resources URLs can also be a regex
 let _myLogEnabledLocationURLsToInclude = _LOCALHOST;
 let _myLogEnabledLocationURLsToExclude = _NO_LOCATION;
@@ -267,6 +265,31 @@ let _myTryCacheIgnoringVaryHeaderAsFallbackResourceURLsToExclude = _NO_RESOURCE;
 // The resources URLs can also be a regex
 let _myPutInCacheAllowedForOpaqueResponsesResourceURLsToInclude = _NO_RESOURCE;
 let _myPutInCacheAllowedForOpaqueResponsesResourceURLsToExclude = _NO_RESOURCE;
+
+
+
+// When an opaque response is received for a given URL, and that URL is not allowed to
+// be put in cache as an opaque response (see @_myPutInCacheAllowedForOpaqueResponsesResourceURLsToInclude),
+// u can delete that URL from the cache through this setting
+//
+// The reason behind this is that, if an opaque response is received, and u don't want to cache it, u might keep in the cache
+// an old value received when the response was not opaque, but use the opaque response in your app, which might be a successful response, just opaque
+//
+// Imagine using @_myTryCacheFirstResourceURLsToInclude, the OK response will basically block the opaque response from the moment that it's cached
+// By enabling this, every time a response is opaque, u are basically invalidating the corresponding cached resource, because it might not be up to date anymore
+// and might cause more issues than what is worth
+//
+// By default, this setting is enabled on all resources, so that there is no risk in keeping in the cache an outdated value when a new valid one is being used,
+// but if u prefer to just do this for resources that tries the cache first, since the other ones will always use the network response anyway,
+// u can assign @_myTryCacheFirstResourceURLsToInclude to this setting
+//
+// I'm not an expert regarding opaque responses, but I guess that it's unusual for a response to be opaque for a fetch request and not opaque for another, 
+// but, if it happens, this can make u feel safe, while if it's not a real case, 
+// this will just not do anything, since either u allow opaque responses to be cached (not deleting them) or not (so nothing to delete anyway)
+//
+// The resources URLs can also be a regex
+let _myDeleteFromCacheOnOpaqueResponsesResourceURLsToInclude = _EVERY_RESOURCE;
+let _myDeleteFromCacheOnOpaqueResponsesResourceURLsToExclude = _NO_RESOURCE;
 
 
 
@@ -762,7 +785,11 @@ async function _activate() {
             await self.registration.unregister();
             clients.forEach(client => client.navigate(client.url));
 
-            console.error("An error occurred while activating the service worker");
+            let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
+            if (logEnabled) {
+                console.error("An error occurred while activating the service worker");
+                console.error(error);
+            }
         }
     }
 }
@@ -858,8 +885,8 @@ async function _fetchFromServiceWorker(request) {
             return responseFromNetwork;
         }
     } catch (error) {
-        let errorMessage = "An error occurred while trying to fetch from the service worker: " + request?.url + "\n\n" + error;
-        let responseFromServiceWorker = new Response(errorMessage, {
+        let errorMessage = "An error occurred while trying to fetch from the service worker: " + request?.url;
+        let responseFromServiceWorker = new Response(errorMessage + "\n\n" + error, {
             status: 500,
             headers: { "Content-Type": "text/plain" }
         });
@@ -868,8 +895,9 @@ async function _fetchFromServiceWorker(request) {
             let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
             if (logEnabled) {
                 console.error(errorMessage);
+                console.error(error);
             }
-        } catch (error) {
+        } catch (anotherError) {
             // Do nothing
         }
 
@@ -879,26 +907,13 @@ async function _fetchFromServiceWorker(request) {
 
 async function _fetchFromNetworkAndPutInCache(request, awaitOnlyFetchFromNetwork = false, refetchFromNetwork = false, useTemps = false, fetchFromNetworkAllowedOverride = null) {
     let responseFromNetwork = await _fetchFromNetwork(request, fetchFromNetworkAllowedOverride);
+
     let responseHasBeenCached = false;
-
-    if (_isResponseOk(responseFromNetwork) || _isResponseOpaque(responseFromNetwork)) {
-        if (_shouldResourceBeCached(request, responseFromNetwork)) {
-            if (!awaitOnlyFetchFromNetwork) {
-                responseHasBeenCached = await _putInCache(request, responseFromNetwork, useTemps);
-
-                if (refetchFromNetwork) {
-                    await _tickOffFromRefetchFromNetworkChecklist(request.url, useTemps);
-                }
-            } else {
-                _putInCache(request, responseFromNetwork, useTemps).then(function (putInCacheSucceeded) {
-                    if (putInCacheSucceeded && refetchFromNetwork) {
-                        _tickOffFromRefetchFromNetworkChecklist(request.url, useTemps);
-                    }
-                });
-
-                responseHasBeenCached = null; // Not awaiting so we can't know
-            }
-        }
+    if (awaitOnlyFetchFromNetwork) {
+        _postFetchFromNetwork(request, responseFromNetwork, refetchFromNetwork, useTemps);
+        responseHasBeenCached = null; // Not awaiting, which means we can't know if the resource will be actually cached
+    } else {
+        responseHasBeenCached = await _postFetchFromNetwork(request, responseFromNetwork, refetchFromNetwork, useTemps);
     }
 
     return [responseFromNetwork, responseHasBeenCached];
@@ -915,8 +930,8 @@ async function _fetchFromNetwork(request, fetchFromNetworkAllowedOverride = null
             throw new Error("Fetch from network is not allowed: " + request.url);
         }
     } catch (error) {
-        let errorMessage = "An error occurred while trying to fetch from the network: " + request.url + "\n\n" + error;
-        responseFromNetwork = new Response(errorMessage, {
+        let errorMessage = "An error occurred while trying to fetch from the network: " + request.url;
+        responseFromNetwork = new Response(errorMessage + "\n\n" + error, {
             status: 500,
             headers: { "Content-Type": "text/plain" }
         });
@@ -924,10 +939,32 @@ async function _fetchFromNetwork(request, fetchFromNetworkAllowedOverride = null
         let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
         if (logEnabled) {
             console.error(errorMessage);
+            console.error(error);
         }
     }
 
     return responseFromNetwork;
+}
+
+async function _postFetchFromNetwork(request, responseFromNetwork, refetchFromNetwork = false, useTemps = false) {
+    let responseHasBeenCached = false;
+
+    if (_shouldResourceBeCached(request, responseFromNetwork)) {
+        responseHasBeenCached = await _putInCache(request, responseFromNetwork, useTemps);
+
+        if (responseHasBeenCached && refetchFromNetwork) {
+            await _tickOffFromRefetchFromNetworkChecklist(request.url, useTemps);
+        }
+    } else if (_shouldDeleteFromCacheDueToOpaqueResponse(request, responseFromNetwork)) {
+        let ignoreURLParams = _shouldResourceURLBeIncluded(request.url, _myTryCacheIgnoringURLParamsResourceURLsToInclude, _myTryCacheIgnoringURLParamsResourceURLsToExclude);
+        let ignoreVaryHeader = _shouldResourceURLBeIncluded(request.url, _myTryCacheIgnoringVaryHeaderResourceURLsToInclude, _myTryCacheIgnoringVaryHeaderResourceURLsToExclude);
+        let ignoreURLParamsAsFallback = _shouldResourceURLBeIncluded(request.url, _myTryCacheIgnoringURLParamsAsFallbackResourceURLsToInclude, _myTryCacheIgnoringURLParamsAsFallbackResourceURLsToExclude);
+        let ignoreVaryHeaderAsFallback = _shouldResourceURLBeIncluded(request.url, _myTryCacheIgnoringVaryHeaderAsFallbackResourceURLsToInclude, _myTryCacheIgnoringVaryHeaderAsFallbackResourceURLsToExclude);
+
+        await _deleteFromCache(request, ignoreURLParams || ignoreURLParamsAsFallback, ignoreVaryHeader || ignoreVaryHeaderAsFallback);
+    }
+
+    return responseHasBeenCached;
 }
 
 async function _fetchFromCache(resourceURL, ignoreURLParams = false, ignoreVaryHeader = false) {
@@ -946,6 +983,7 @@ async function _fetchFromCache(resourceURL, ignoreURLParams = false, ignoreVaryH
         let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
         if (logEnabled) {
             console.error("An error occurred while trying to get from the cache: " + resourceURL);
+            console.error(error);
         }
     }
 
@@ -967,10 +1005,31 @@ async function _putInCache(request, response, useTempCache = false) {
         let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
         if (logEnabled) {
             console.error("An error occurred while trying to put the response in the cache: " + request.url);
+            console.error(error);
         }
     }
 
     return putInCacheSucceeded;
+}
+
+async function _deleteFromCache(request, ignoreURLParams = false, ignoreVaryHeader = false, useTempCache = false) {
+    let deleteFromCacheSucceeded = false;
+
+    try {
+        let currentCacheID = (useTempCache) ? _getTempCacheID() : _getCacheID();
+        let currentCache = await caches.open(currentCacheID);
+        deleteFromCacheSucceeded = await currentCache.delete(request, { ignoreSearch: ignoreURLParams, ignoreVary: ignoreVaryHeader });
+    } catch (error) {
+        deleteFromCacheSucceeded = false;
+
+        let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
+        if (logEnabled) {
+            console.error("An error occurred while trying to delete the resource from the cache: " + request.url);
+            console.error(error);
+        }
+    }
+
+    return deleteFromCacheSucceeded;
 }
 
 async function _tickOffFromRefetchFromNetworkChecklist(resourceURL, useTempRefetchFromNetworkChecklist = false) {
@@ -982,6 +1041,7 @@ async function _tickOffFromRefetchFromNetworkChecklist(resourceURL, useTempRefet
         let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
         if (logEnabled) {
             console.error("An error occurred while trying to put the response in the cache: " + request.url);
+            console.error(error);
         }
     }
 }
@@ -1066,7 +1126,7 @@ async function _cacheResourcesToPrecache(rejectOnPrecacheFailed = false, useTemp
 
                 if (resourceHaveToBeCached) {
                     let [responseFromNetwork, responseHasBeenCached] = await _fetchFromNetworkAndPutInCache(new Request(resourceCompleteURLToPrecache), false, refetchFromNetwork, useTemps, installPhase);
-                    resourceHasBeenPrecached = responseHasBeenCached;
+                    resourceHasBeenPrecached = responseHasBeenCached != null && responseHasBeenCached;
                 } else {
                     resourceHasBeenPrecached = true; // The resource has been already precached
                 }
@@ -1074,6 +1134,7 @@ async function _cacheResourcesToPrecache(rejectOnPrecacheFailed = false, useTemp
                 let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
                 if (logEnabled) {
                     console.error("Failed to fetch resource to precache: " + resourceCompleteURLToPrecache);
+                    console.error(error);
                 }
             }
 
@@ -1231,13 +1292,20 @@ function _isResponseOk(response) {
 }
 
 function _isResponseOpaque(response) {
-    return response != null && response.status == 0 && response.type.includes("opaque");
+    return response != null && response.status == 0 && response.type != null && response.type.includes("opaque");
 }
 
 function _shouldResourceBeCached(request, response) {
     let cacheResource = _shouldResourceURLBeIncluded(request.url, _myPutInCacheResourceURLsToInclude, _myPutInCacheResourceURLsToExclude);
     let cacheResourceWithOpaqueResponseAllowed = _shouldResourceURLBeIncluded(request.url, _myPutInCacheAllowedForOpaqueResponsesResourceURLsToInclude, _myPutInCacheAllowedForOpaqueResponsesResourceURLsToExclude);
-    return cacheResource && (request.method == "GET" && (_isResponseOk(response) || (cacheResourceWithOpaqueResponseAllowed && _isResponseOpaque(response))));
+    return cacheResource && request.method == "GET" && (_isResponseOk(response) || (cacheResourceWithOpaqueResponseAllowed && _isResponseOpaque(response)));
+}
+
+function _shouldDeleteFromCacheDueToOpaqueResponse(request, response) {
+    let deleteFromCache = _shouldResourceURLBeIncluded(request.url, _myDeleteFromCacheOnOpaqueResponsesResourceURLsToInclude, _myDeleteFromCacheOnOpaqueResponsesResourceURLsToExclude);
+    let cacheResource = _shouldResourceURLBeIncluded(request.url, _myPutInCacheResourceURLsToInclude, _myPutInCacheResourceURLsToExclude);
+    let cacheResourceWithOpaqueResponseAllowed = _shouldResourceURLBeIncluded(request.url, _myPutInCacheAllowedForOpaqueResponsesResourceURLsToInclude, _myPutInCacheAllowedForOpaqueResponsesResourceURLsToExclude);
+    return deleteFromCache && cacheResource && request.method == "GET" && !_isResponseOk(response) && _isResponseOpaque(response) && !cacheResourceWithOpaqueResponseAllowed;
 }
 
 function _shouldHandleRequest(request) {
@@ -1393,6 +1461,7 @@ async function _shouldResourceBeRefetchedFromNetwork(resourceURL, checkTempRefet
         let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
         if (logEnabled) {
             console.error("An error occurred while trying to check if the resource should be refetched: " + request.url);
+            console.error(error);
         }
     }
 
