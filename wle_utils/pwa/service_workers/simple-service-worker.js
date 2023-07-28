@@ -170,8 +170,8 @@ async function _fetchFromServiceWorker(request) {
             return responseFromNetwork;
         }
     } catch (error) {
-        let errorMessage = "An error occurred while trying to fetch from the service worker: " + request?.url + "\n\n" + error;
-        let responseFromServiceWorker = new Response(errorMessage, {
+        let errorMessage = "An error occurred while trying to fetch from the service worker: " + request?.url;
+        let responseFromServiceWorker = new Response(errorMessage + "\n\n" + error, {
             status: 500,
             headers: { "Content-Type": "text/plain" }
         });
@@ -179,8 +179,9 @@ async function _fetchFromServiceWorker(request) {
         try {
             if (_myLogEnabled) {
                 console.error(errorMessage);
+                console.error(error);
             }
-        } catch (error) {
+        } catch (anotherError) {
             // Do nothing
         }
 
@@ -190,18 +191,13 @@ async function _fetchFromServiceWorker(request) {
 
 async function _fetchFromNetworkAndPutInCache(request, awaitOnlyFetchFromNetwork = false, useTempCache = false) {
     let responseFromNetwork = await _fetchFromNetwork(request);
+
     let responseHasBeenCached = false;
-
-    if (_isResponseOk(responseFromNetwork) || _isResponseOpaque(responseFromNetwork)) {
-        if (_shouldResourceBeCached(request, responseFromNetwork)) {
-            if (!awaitOnlyFetchFromNetwork) {
-                responseHasBeenCached = await _putInCache(request, responseFromNetwork, useTempCache);
-            } else {
-                _putInCache(request, responseFromNetwork, useTempCache);
-
-                responseHasBeenCached = null; // Not awaiting so we can't know
-            }
-        }
+    if (awaitOnlyFetchFromNetwork) {
+        _postFetchFromNetwork(request, responseFromNetwork, useTempCache);
+        responseHasBeenCached = null; // Not awaiting, which means we can't know if the resource will be actually cached
+    } else {
+        responseHasBeenCached = await _postFetchFromNetwork(request, responseFromNetwork, useTempCache);
     }
 
     return [responseFromNetwork, responseHasBeenCached];
@@ -213,18 +209,32 @@ async function _fetchFromNetwork(request) {
     try {
         responseFromNetwork = await fetch(request);
     } catch (error) {
-        let errorMessage = "An error occurred while trying to fetch from the network: " + request.url + "\n\n" + error;
-        responseFromNetwork = new Response(errorMessage, {
+        let errorMessage = "An error occurred while trying to fetch from the network: " + request.url;
+        responseFromNetwork = new Response(errorMessage + "\n\n" + error, {
             status: 500,
             headers: { "Content-Type": "text/plain" }
         });
 
         if (_myLogEnabled) {
             console.error(errorMessage);
+            console.error(error);
         }
     }
 
     return responseFromNetwork;
+}
+
+async function _postFetchFromNetwork(request, responseFromNetwork, useTempCache = false) {
+    let responseHasBeenCached = false;
+
+    if (_shouldResourceBeCached(request, responseFromNetwork)) {
+        responseHasBeenCached = await _putInCache(request, responseFromNetwork, useTempCache);
+    } else if (_shouldDeleteFromCacheDueToOpaqueResponse(request, responseFromNetwork)) {
+        let ignoreURLParamsAsFallback = _myTryCacheIgnoringURLParamsForResourcesFromCurrentLocationAsFallback && _shouldResourceURLBeIncluded(request.url, _EVERY_RESOURCE_FROM_CURRENT_LOCATION, _NO_RESOURCE);
+        await _deleteFromCache(request, ignoreURLParamsAsFallback);
+    }
+
+    return responseHasBeenCached;
 }
 
 async function _fetchFromCache(resourceURL, ignoreURLParams = false) {
@@ -242,6 +252,7 @@ async function _fetchFromCache(resourceURL, ignoreURLParams = false) {
 
         if (_myLogEnabled) {
             console.error("An error occurred while trying to get from the cache: " + resourceURL);
+            console.error(error);
         }
     }
 
@@ -262,10 +273,30 @@ async function _putInCache(request, response, useTempCache = false) {
 
         if (_myLogEnabled) {
             console.error("An error occurred while trying to put the response in the cache: " + request.url);
+            console.error(error);
         }
     }
 
     return putInCacheSucceeded;
+}
+
+async function _deleteFromCache(request, ignoreURLParams = false, useTempCache = false) {
+    let deleteFromCacheSucceeded = false;
+
+    try {
+        let currentCacheID = (useTempCache) ? _getTempCacheID() : _getCacheID();
+        let currentCache = await caches.open(currentCacheID);
+        deleteFromCacheSucceeded = await currentCache.delete(request, { ignoreSearch: ignoreURLParams });
+    } catch (error) {
+        deleteFromCacheSucceeded = false;
+
+        if (_myLogEnabled) {
+            console.error("An error occurred while trying to delete the resource from the cache: " + request.url);
+            console.error(error);
+        }
+    }
+
+    return deleteFromCacheSucceeded;
 }
 
 async function _cacheResourcesToPrecache() {
@@ -320,13 +351,14 @@ async function _cacheResourcesToPrecache() {
 
                 if (resourceHaveToBeCached) {
                     let [responseFromNetwork, responseHasBeenCached] = await _fetchFromNetworkAndPutInCache(new Request(resourceCompleteURLToPrecache), false, true);
-                    resourceHasBeenPrecached = responseHasBeenCached;
+                    resourceHasBeenPrecached = responseHasBeenCached != null && responseHasBeenCached;
                 } else {
                     resourceHasBeenPrecached = true; // The resource has been already precached
                 }
             } catch (error) {
                 if (_myLogEnabled) {
                     console.error("Failed to fetch resource to precache: " + resourceCompleteURLToPrecache);
+                    console.error(error);
                 }
             }
 
@@ -409,12 +441,17 @@ function _isResponseOk(response) {
 }
 
 function _isResponseOpaque(response) {
-    return response != null && response.status == 0 && response.type.includes("opaque");
+    return response != null && response.status == 0 && response.type != null && response.type.includes("opaque");
 }
 
 function _shouldResourceBeCached(request, response) {
     let cacheResource = !_myPutInCacheOnlyResourcesFromCurrentLocation || _shouldResourceURLBeIncluded(request.url, _EVERY_RESOURCE_FROM_CURRENT_LOCATION, _NO_RESOURCE);
-    return cacheResource && (request.method == "GET" && _isResponseOk(response));
+    return cacheResource && request.method == "GET" && _isResponseOk(response);
+}
+
+function _shouldDeleteFromCacheDueToOpaqueResponse(request, response) {
+    let cacheResource = !_myPutInCacheOnlyResourcesFromCurrentLocation || _shouldResourceURLBeIncluded(request.url, _EVERY_RESOURCE_FROM_CURRENT_LOCATION, _NO_RESOURCE);
+    return cacheResource && request.method == "GET" && !_isResponseOk(response) && _isResponseOpaque(response);
 }
 
 function _shouldHandleRequest(request) {
