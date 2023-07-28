@@ -61,6 +61,12 @@ let _EVERY_LOCATION = [".*"];
 let _NO_LOCATION = [];
 let _LOCALHOST = ["localhost:8080"];
 
+let _IGNORE_INDEX_URL_PARAMS = [
+    "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + "$",
+    "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + "\\?",
+    "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + "index\\.html"
+];
+
 // #endregion Service Worker Constants
 
 
@@ -97,7 +103,7 @@ async function _install() {
     if (_myRejectServiceWorkerOnLocalhost) {
         let rejectServiceWorker = _shouldResourceURLBeIncluded(_getCurrentLocation(), _LOCALHOST, _NO_LOCATION);
         if (rejectServiceWorker) {
-            throw new Error("The service worker is not allowed to be installed on the current location: " + _getCurrentLocation());
+            throw new Error("The service worker is not allowed to be installed on the current location: " + _getCurrentLocation(false));
         }
     }
 
@@ -121,7 +127,8 @@ async function _fetchFromServiceWorker(request) {
             cacheAlreadyTried = true;
 
             // Try to get the resource from the cache
-            let responseFromCache = await _fetchFromCache(request.url);
+            let ignoreURLParams = _shouldResourceURLBeIncluded(request.url, _IGNORE_INDEX_URL_PARAMS, _NO_RESOURCE);
+            let responseFromCache = await _fetchFromCache(request.url, ignoreURLParams);
             if (responseFromCache != null) {
                 if (_myUpdateCacheInBackground) {
                     _fetchFromNetworkAndPutInCache(request);
@@ -535,12 +542,12 @@ function _shouldResourceURLBeIncluded(resourceURL, includeList, excludeList) {
     return includeResourseURL;
 }
 
-function _getCurrentLocation() {
-    return self.location.href.slice(0, self.location.href.lastIndexOf("/"));
+function _getCurrentLocation(addTrailingSlash = true) {
+    return self.location.href.slice(0, self.location.href.lastIndexOf("/")) + (addTrailingSlash ? "/" : "");
 }
 
-function _getCurrentOrigin() {
-    return self.location.origin;
+function _getCurrentOrigin(addTrailingSlash = true) {
+    return self.location.origin + (addTrailingSlash ? "/" : "");
 }
 
 function _escapeRegexSpecialCharacters(regexToEscape) {

@@ -10,6 +10,12 @@ let _EVERY_LOCATION = [".*"];
 let _NO_LOCATION = [];
 let _LOCALHOST = ["localhost:8080"];
 
+let _IGNORE_INDEX_URL_PARAMS = [
+    "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + "$",
+    "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + "\\?",
+    "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + "index\\.html"
+];
+
 // #endregion Service Worker Constants
 
 
@@ -198,6 +204,11 @@ let _myForceTryCacheFirstOnNetworkErrorResourceURLsToExclude = _NO_RESOURCE;
 // but since u can precache the bundle.js / wonderland.min.js anyway without URL params,
 // if u put the bundle.js/wonderland.min.js URLs here, the service worker will try to look in the cache for the requested URL ignoring the URL params
 //
+// This can also be useful when u use URL params on the base URL to give parameters to the app, and not really to fetch a different resource
+// Like doing "https://signor-pipo.itch.io/?useWondermelon=true" to specify that a certain feature should be turned on
+// If only "https://signor-pipo.itch.io/" is cached, when u ask for the above URL the cache will fail, unless u use this feature to ignore the URL params
+// In this specific case u can use _IGNORE_INDEX_URL_PARAMS to specify that only the index URL should be allowed to ignore them
+//
 // Beware that using this could make u use an old resource which might not be compatible with the new ones
 // U should use this only when u know it would not make a difference to use the URL params or if the old resource
 // is still ok to use and better than a network error
@@ -208,11 +219,9 @@ let _myForceTryCacheFirstOnNetworkErrorResourceURLsToExclude = _NO_RESOURCE;
 //
 // The resources URLs can also be a regex
 let _myTryCacheIgnoringURLParamsResourceURLsToInclude = [
-    "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + "\\/$",
-    "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + "\\/\\?",
-    "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + "\\/index\\.html",
+    ..._IGNORE_INDEX_URL_PARAMS,
     "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + ".*bundle\\.js",
-    "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + ".*wonderland.min\\.js"
+    "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + ".*wonderland\\.min\\.js"
 ];
 let _myTryCacheIgnoringURLParamsResourceURLsToExclude = _NO_RESOURCE;
 
@@ -733,7 +742,7 @@ self.addEventListener("fetch", function (event) {
 async function _install() {
     let rejectServiceWorker = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myRejectServiceWorkerLocationURLsToInclude, _myRejectServiceWorkerLocationURLsToExclude);
     if (rejectServiceWorker) {
-        throw new Error("The service worker is not allowed to be installed on the current location: " + _getCurrentLocation());
+        throw new Error("The service worker is not allowed to be installed on the current location: " + _getCurrentLocation(false));
     }
 
     await _cacheResourcesToPrecache(true, true, true);
@@ -1495,12 +1504,12 @@ function _shouldResourceURLBeIncluded(resourceURL, includeList, excludeList) {
     return includeResourseURL;
 }
 
-function _getCurrentLocation() {
-    return self.location.href.slice(0, self.location.href.lastIndexOf("/"));
+function _getCurrentLocation(addTrailingSlash = true) {
+    return self.location.href.slice(0, self.location.href.lastIndexOf("/")) + (addTrailingSlash ? "/" : "");
 }
 
-function _getCurrentOrigin() {
-    return self.location.origin;
+function _getCurrentOrigin(addTrailingSlash = true) {
+    return self.location.origin + (addTrailingSlash ? "/" : "");
 }
 
 function _escapeRegexSpecialCharacters(regexToEscape) {
