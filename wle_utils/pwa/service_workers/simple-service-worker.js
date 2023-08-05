@@ -16,21 +16,22 @@ let _myResourceURLsToPrecache = [];
 let _myPutInCacheOnlyResourcesFromCurrentLocation = false;
 
 // Try the cache first, and only if it fails fetch from the network
-let _myTryCacheFirst = false;
+// The URL params are ignored as a fallback for the index URL 
+let _myTryFetchFromCacheFirst = false;
 
 // When fetching from the cache first, the resource is never updated again
 // If u want to fetch from the cache to quickly serve the request, but still want to update the cached resource by fetching from the network,
 // u can enable this
 let _myUpdateCacheInBackground = false;
 
-// Ignore URL params when trying to get from the cache, but only if the network fails,
+// Ignore URL params when trying to fetch from the cache, but only if the network fails,
 // since the params might be used to fetch a different resource
-let _myTryCacheIgnoringURLParamsForResourcesFromCurrentLocationAsFallback = false;
+let _myFetchFromCacheIgnoringURLParamsForResourcesFromCurrentLocationAsFallback = false;
 
-// If u are not using @_myTryCacheFirst, when the network fails for the current location it will take a lot to serve the requests from the cache,
+// If u are not using @_myTryFetchFromCacheFirst, when the network fails for the current location it will take a lot to fetch the requests from the cache,
 // since every request needs to fail first
 // U can enable this to make it so that on the first network error from the current location u switch to use the cache first
-let _myForceTryCacheFirstOnNetworkErrorFromCurrentLocation = false;
+let _myForceTryFetchFromCacheFirstOnNetworkErrorFromCurrentLocation = false;
 
 
 
@@ -73,7 +74,7 @@ let _IGNORE_INDEX_URL_PARAMS = [
 
 // #region Service Worker Variables
 
-let _myForceTryCacheFirstOnNetworkErrorEnabled = false; // As of now this is not reset on page reload, but only when using a new tab
+let _myForceTryFetchFromCacheFirstOnNetworkErrorEnabled = false; // This is reset only when all the tabs are closed, reloading them is not enough
 
 // #endregion Service Worker Variables
 
@@ -123,12 +124,23 @@ async function _fetchFromServiceWorker(request) {
         }
 
         let cacheAlreadyTried = false;
-        if (_myTryCacheFirst || _myForceTryCacheFirstOnNetworkErrorEnabled) {
+        if (_myTryFetchFromCacheFirst || _myForceTryFetchFromCacheFirstOnNetworkErrorEnabled) {
             cacheAlreadyTried = true;
 
-            // Try to get the resource from the cache
-            let ignoreURLParams = _shouldResourceURLBeIncluded(request.url, _IGNORE_INDEX_URL_PARAMS, _NO_RESOURCE);
-            let responseFromCache = await _fetchFromCache(request.url, ignoreURLParams);
+            let responseFromCache = await _fetchFromCache(request.url);
+
+            if (responseFromCache == null) {
+                let ignoreURLParamsAsFallback = _shouldResourceURLBeIncluded(request.url, _IGNORE_INDEX_URL_PARAMS, _NO_RESOURCE);
+                if (ignoreURLParamsAsFallback) {
+                    responseFromCache = await _fetchFromCache(request.url, ignoreURLParamsAsFallback);
+                    if (responseFromCache != null) {
+                        if (_myLogEnabled) {
+                            console.warn("Try fetch from cache first using a fallback: " + request.url);
+                        }
+                    }
+                }
+            }
+
             if (responseFromCache != null) {
                 if (_myUpdateCacheInBackground) {
                     _fetchFromNetworkAndPutInCache(request);
@@ -138,15 +150,14 @@ async function _fetchFromServiceWorker(request) {
             }
         }
 
-        // Try to get the resource from the network
         let [responseFromNetwork, responseHasBeenCached] = await _fetchFromNetworkAndPutInCache(request, true);
         if (_isResponseOk(responseFromNetwork) || _isResponseOpaque(responseFromNetwork)) {
             return responseFromNetwork;
         } else {
-            if (!_myForceTryCacheFirstOnNetworkErrorEnabled) {
-                let enableForceTryCacheFirstOnNetworkError = _myForceTryCacheFirstOnNetworkErrorFromCurrentLocation && _shouldResourceURLBeIncluded(request.url, _EVERY_RESOURCE_FROM_CURRENT_LOCATION, _NO_RESOURCE);
-                if (enableForceTryCacheFirstOnNetworkError) {
-                    _myForceTryCacheFirstOnNetworkErrorEnabled = true;
+            if (!_myForceTryFetchFromCacheFirstOnNetworkErrorEnabled) {
+                let enableForceTryFetchFromCacheFirstOnNetworkError = _myForceTryFetchFromCacheFirstOnNetworkErrorFromCurrentLocation && _shouldResourceURLBeIncluded(request.url, _EVERY_RESOURCE_FROM_CURRENT_LOCATION, _NO_RESOURCE);
+                if (enableForceTryFetchFromCacheFirstOnNetworkError) {
+                    _myForceTryFetchFromCacheFirstOnNetworkErrorEnabled = true;
 
                     if (_myLogEnabled) {
                         console.warn("Force try cache on network error enabled");
@@ -161,12 +172,12 @@ async function _fetchFromServiceWorker(request) {
                 }
             }
 
-            let ignoreURLParamsAsFallback = _myTryCacheIgnoringURLParamsForResourcesFromCurrentLocationAsFallback && _shouldResourceURLBeIncluded(request.url, _EVERY_RESOURCE_FROM_CURRENT_LOCATION, _NO_RESOURCE);
+            let ignoreURLParamsAsFallback = _myFetchFromCacheIgnoringURLParamsForResourcesFromCurrentLocationAsFallback && _shouldResourceURLBeIncluded(request.url, _EVERY_RESOURCE_FROM_CURRENT_LOCATION, _NO_RESOURCE);
             if (ignoreURLParamsAsFallback) {
                 let fallbackResponseFromCache = await _fetchFromCache(request.url, ignoreURLParamsAsFallback);
                 if (fallbackResponseFromCache != null) {
                     if (_myLogEnabled) {
-                        console.warn("Get from cache using a fallback: " + request.url);
+                        console.warn("Fetch from cache using a fallback: " + request.url);
                     }
 
                     return fallbackResponseFromCache;
@@ -237,7 +248,7 @@ async function _postFetchFromNetwork(request, responseFromNetwork, useTempCache 
     if (_shouldResourceBeCached(request, responseFromNetwork)) {
         responseHasBeenCached = await _putInCache(request, responseFromNetwork, useTempCache);
     } else if (_shouldDeleteFromCacheDueToOpaqueResponse(request, responseFromNetwork)) {
-        let ignoreURLParamsAsFallback = _myTryCacheIgnoringURLParamsForResourcesFromCurrentLocationAsFallback && _shouldResourceURLBeIncluded(request.url, _EVERY_RESOURCE_FROM_CURRENT_LOCATION, _NO_RESOURCE);
+        let ignoreURLParamsAsFallback = _myFetchFromCacheIgnoringURLParamsForResourcesFromCurrentLocationAsFallback && _shouldResourceURLBeIncluded(request.url, _EVERY_RESOURCE_FROM_CURRENT_LOCATION, _NO_RESOURCE);
         await _deleteFromCache(request, ignoreURLParamsAsFallback);
     }
 
