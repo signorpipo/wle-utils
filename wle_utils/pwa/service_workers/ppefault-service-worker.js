@@ -84,15 +84,15 @@ let _myResourceURLsToPrecache = [
     //"WonderlandRuntime-physx-simd-threads.worker.js",
     _myAppName + "-bundle.js",
     _myAppName + ".bin",
-    "manifest.json",
     "favicon.ico",
-    //"icon512.png",
-    //"icon192.png",
-    //"icon168.png",
-    //"icon144.png",
-    //"icon96.png",
-    //"icon72.png",
+    "manifest.json",
     //"icon48.png",
+    //"icon72.png",
+    //"icon96.png",
+    //"icon144.png",
+    //"icon168.png",
+    //"icon192.png",
+    //"icon512.png",
 ];
 
 
