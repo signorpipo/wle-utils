@@ -1,11 +1,11 @@
 {
-	"name": "app",
-	"short_name": "app",
-	"description": "app description",
+	"name": "<app>",
+	"short_name": "<app>",
+	"description": "<app description>",
 	"lang": "en-US",
 	"display": "standalone",
-	"ovr_package_name": "com.author.app",
-	"start_url": "link to a page which has the app with pwa working (netlify can work)",
+	"ovr_package_name": "<com.author.app>",
+	"start_url": "<link to a page which has the app with pwa working (netlify can work)>",
 	"scope": "./",
 	"focusaware": true,
 	"orientation": "landscape",
@@ -60,7 +60,7 @@
 			"src": "pwa/screenshots/1.png",
 			"sizes": "2560x1440",
 			"type": "image/png",
-			"description": "screenshot description"
+			"description": "<screenshot description>"
 		}
 	]
 }
