@@ -341,47 +341,49 @@ async function _cacheResourcesToPrecache() {
         currentTempCache = null;
     }
 
-    let promisesToAwait = [];
-    for (let resourceURLToPrecache of _getResourceURLsToPrecache()) {
-        let resourceCompleteURLToPrecache = new Request(resourceURLToPrecache).url;
+    let precacheResourceAsyncCallback = async function precacheResourceAsyncCallback(resourceFullURLToPrecache) {
+        let resourceHasBeenPrecached = false;
 
-        promisesToAwait.push(new Promise(async function (resolve, reject) {
-            let resourceHasBeenPrecached = false;
+        try {
+            let resourceHaveToBeCached = false;
 
-            try {
-                let resourceHaveToBeCached = false;
+            let resourceAlreadyInCache = false;
+            if (currentCache != null) {
+                resourceAlreadyInCache = await currentCache.match(resourceFullURLToPrecache) != null;
+            }
 
-                let resourceAlreadyInCache = false;
-                if (currentCache != null) {
-                    resourceAlreadyInCache = await currentCache.match(resourceCompleteURLToPrecache) != null;
+            if (!resourceAlreadyInCache) {
+                let resourceAlreadyInTempCache = false;
+                if (currentTempCache != null) {
+                    resourceAlreadyInTempCache = await currentTempCache.match(resourceFullURLToPrecache) != null;
                 }
 
-                if (!resourceAlreadyInCache) {
-                    let resourceAlreadyInTempCache = false;
-                    if (currentTempCache != null) {
-                        resourceAlreadyInTempCache = await currentTempCache.match(resourceCompleteURLToPrecache) != null;
-                    }
-
-                    if (!resourceAlreadyInTempCache) {
-                        resourceHaveToBeCached = true;
-                    }
-                }
-
-                if (resourceHaveToBeCached) {
-                    let [responseFromNetwork, responseHasBeenCached] = await _fetchFromNetworkAndPutInCache(new Request(resourceCompleteURLToPrecache), false, true);
-                    resourceHasBeenPrecached = responseHasBeenCached != null && responseHasBeenCached;
-                } else {
-                    resourceHasBeenPrecached = true; // The resource has been already precached
-                }
-            } catch (error) {
-                if (_myLogEnabled) {
-                    console.error("Failed to fetch resource to precache: " + resourceCompleteURLToPrecache);
-                    console.error(error);
+                if (!resourceAlreadyInTempCache) {
+                    resourceHaveToBeCached = true;
                 }
             }
 
-            resolve();
-        }));
+            if (resourceHaveToBeCached) {
+                let [responseFromNetwork, responseHasBeenCached] = await _fetchFromNetworkAndPutInCache(new Request(resourceFullURLToPrecache), false, true);
+                resourceHasBeenPrecached = responseHasBeenCached != null && responseHasBeenCached;
+            } else {
+                resourceHasBeenPrecached = true; // The resource has been already precached
+            }
+        } catch (error) {
+            resourceHasBeenPrecached = false;
+
+            if (_myLogEnabled) {
+                console.error("Failed to fetch the resource to precache: " + resourceFullURLToPrecache);
+                console.error(error);
+            }
+        }
+    };
+
+    let promisesToAwait = [];
+    for (let resourceURLToPrecache of _getResourceURLsToPrecache()) {
+        let resourceFullURLToPrecache = new Request(resourceURLToPrecache).url;
+
+        promisesToAwait.push(precacheResourceAsyncCallback(resourceFullURLToPrecache));
     }
 
     await Promise.all(promisesToAwait);
