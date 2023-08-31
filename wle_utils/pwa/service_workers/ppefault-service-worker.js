@@ -70,7 +70,7 @@ let _myCacheVersion = 1;
 let _myResourceURLsToPrecache = [
     "/",
     "index.html",
-    "wonderland.min.js",
+    _myAppName + "-bundle.js",
     //"WonderlandRuntime-physx.wasm",
     //"WonderlandRuntime-physx.js",
     //"WonderlandRuntime-physx-simd.wasm",
@@ -82,8 +82,8 @@ let _myResourceURLsToPrecache = [
     //"WonderlandRuntime-physx-simd-threads.js",
     //"WonderlandRuntime-physx-simd-threads.worker.js",
     "WonderlandRuntime-LoadingScreen.bin",
-    _myAppName + "-bundle.js",
     _myAppName + ".bin",
+    _myAppName + "-textures.bin",
     "favicon.ico",
     "manifest.json",
     //"icon48.png",
@@ -218,11 +218,10 @@ let _myForceTryFetchFromCacheFirstOnNetworkErrorResourceURLsToExclude = _NO_RESO
 // Also note that this feature only works when fetching from the cache after trying to fetch from the network
 // Use @_myTryFetchFromCacheFirstIgnoringURLParamsAsFallbackResourceURLsToInclude if u want to ignore them when trying to fetch from the cache first
 //
-// When using the Wonderland Engine, u can also add the following URLs to be able to easily precache the wonderland.min.js file and the
-// bundle.js file, which are using the deploy timestamp as URL params to prevent caching, and would require u to always update
+// When using the Wonderland Engine, u can also add the following URL to be able to easily precache the bundle.js file,
+// which is using the deploy timestamp as URL param to prevent caching, and would require u to always update
 // the precache list with that timestamp as URL param
 //
-// "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + ".*wonderland\\.min\\.js"
 // "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + ".*bundle\\.js"
 //
 // Beware that using this feature could make u use an old resource which might not be compatible with the new ones,
@@ -233,7 +232,6 @@ let _myForceTryFetchFromCacheFirstOnNetworkErrorResourceURLsToExclude = _NO_RESO
 // The resources URLs can also be a regex
 let _myFetchFromCacheIgnoringURLParamsAsFallbackResourceURLsToInclude = [
     ..._IGNORE_INDEX_URL_PARAMS,
-    "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + ".*wonderland\\.min\\.js",
     "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + ".*bundle\\.js"
 ];
 let _myFetchFromCacheIgnoringURLParamsAsFallbackResourceURLsToExclude = _NO_RESOURCE;
@@ -246,7 +244,6 @@ let _myFetchFromCacheIgnoringURLParamsAsFallbackResourceURLsToExclude = _NO_RESO
 // The resources URLs can also be a regex
 let _myTryFetchFromCacheFirstIgnoringURLParamsAsFallbackResourceURLsToInclude = [
     ..._IGNORE_INDEX_URL_PARAMS,
-    "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + ".*wonderland\\.min\\.js",
     "^" + _escapeRegexSpecialCharacters(_getCurrentLocation()) + ".*bundle\\.js"
 ];
 let _myTryFetchFromCacheFirstIgnoringURLParamsAsFallbackResourceURLsToExclude = _NO_RESOURCE;
