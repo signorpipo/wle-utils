@@ -258,14 +258,14 @@ let _myCheckResourcesAlreadyInCacheDuringPrecacheIgnoringVaryHeaderResourceURLsT
 
 
 
-// U can use this to be sure a resource is fetched from the network without looking at the browser cache
+// U can use this to be sure a resource is fetched from the network without using the browser cache
 //
 // For resources from the current location it should be safe to override that, but for cross origin (CORS)
 // there might be issues, so use this with caution
 //
 // The resources URLs can also be a regex
-let _myFetchFromNetworkWithoutBrowserCacheResourceURLsToInclude = _EVERY_RESOURCE_FROM_CURRENT_LOCATION;
-let _myFetchFromNetworkWithoutBrowserCacheResourceURLsToExclude = _NO_RESOURCE;
+let _myFetchFromNetworkIgnoringBrowserCacheResourceURLsToInclude = _EVERY_RESOURCE_FROM_CURRENT_LOCATION;
+let _myFetchFromNetworkIgnoringBrowserCacheResourceURLsToExclude = _NO_RESOURCE;
 
 
 
@@ -962,8 +962,8 @@ async function _fetchFromNetwork(request, fetchFromNetworkAllowedOverride = null
     try {
         let fetchFromNetworkAllowed = _shouldResourceURLBeIncluded(request.url, _myFetchFromNetworkAllowedResourceURLsToInclude, _myFetchFromNetworkAllowedResourceURLsToExclude);
         if ((fetchFromNetworkAllowed && fetchFromNetworkAllowedOverride == null) || (fetchFromNetworkAllowedOverride != null && fetchFromNetworkAllowedOverride)) {
-            let fetchFromNetworkWithoutBrowserCache = _shouldResourceURLBeIncluded(request.url, _myFetchFromNetworkWithoutBrowserCacheResourceURLsToInclude, _myFetchFromNetworkWithoutBrowserCacheResourceURLsToExclude);
-            if (fetchFromNetworkWithoutBrowserCache) {
+            let fetchFromNetworkIgnoringBrowserCache = _shouldResourceURLBeIncluded(request.url, _myFetchFromNetworkIgnoringBrowserCacheResourceURLsToInclude, _myFetchFromNetworkIgnoringBrowserCacheResourceURLsToExclude);
+            if (fetchFromNetworkIgnoringBrowserCache) {
                 let requestCacheControlHeader = "";
                 if (request.headers != null) {
                     requestCacheControlHeader = request.headers.get("Cache-Control");
@@ -972,11 +972,13 @@ async function _fetchFromNetwork(request, fetchFromNetworkAllowedOverride = null
                     }
                 }
 
-                let requestWithoutBrowserCacheCacheControlHeader = (requestCacheControlHeader.length == 0) ? ("no-cache") : (requestCacheControlHeader + ", no-cache");
+                let requestIgnoringBrowserCacheCacheControlHeader = (requestCacheControlHeader.length == 0) ? ("no-cache") : (requestCacheControlHeader + ", no-cache");
 
-                let requestWithoutBrowserCache = new Request(request);
-                requestWithoutBrowserCache.headers.set("Cache-Control", requestWithoutBrowserCacheCacheControlHeader);
-                responseFromNetwork = await fetch(requestWithoutBrowserCache);
+                let requestIgnoringBrowserCache = new Request(request);
+                if (requestIgnoringBrowserCache.headers != null) {
+                    requestIgnoringBrowserCache.headers.set("Cache-Control", requestIgnoringBrowserCacheCacheControlHeader);
+                }
+                responseFromNetwork = await fetch(requestIgnoringBrowserCache);
             } else {
                 responseFromNetwork = await fetch(request);
             }
