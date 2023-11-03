@@ -243,8 +243,10 @@ async function _fetchFromNetwork(request) {
             let requestIgnoringBrowserCache = new Request(request);
             if (requestIgnoringBrowserCache.headers != null) {
                 requestIgnoringBrowserCache.headers.set("Cache-Control", requestIgnoringBrowserCacheCacheControlHeader);
+                responseFromNetwork = await fetch(requestIgnoringBrowserCache);
+            } else {
+                responseFromNetwork = await fetch(request);
             }
-            responseFromNetwork = await fetch(requestIgnoringBrowserCache);
         } else {
             responseFromNetwork = await fetch(request);
         }
