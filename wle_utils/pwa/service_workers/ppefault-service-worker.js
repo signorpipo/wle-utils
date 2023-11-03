@@ -277,6 +277,38 @@ let _myTryFetchFromCacheFirstIgnoringVaryHeaderAsFallbackResourceURLsToExclude =
 
 
 
+// This is the same as @_myFetchFromCacheIgnoringVaryHeaderAsFallbackResourceURLsToInclude,
+// but it is used when precaching, since the precache checks if the resource is already in the cache to avoid
+// precaching it again
+//
+// This is needed when precache / installation fails or do not manage to complete,
+// and therefore, on the next attempt, it will start precaching / installing again, 
+// checking if some resources have been already precached during the last attempt, to avoid precache them again
+//
+// Note that during precache u just have the resource URL and not a full request, that can actually use
+// its data to try to match the vary header
+// For this reason precaching will always fetch the resource again, even if the resource was precached previously
+//
+// This should be usually safe to enable since the precache phase should usually give u the same data 
+// over different installing attempts, but on the same device and browser, and with the same service worker version
+//
+// The resources URLs can also be a regex
+let _myCheckResourcesAlreadyInCacheDuringPrecacheIgnoringVaryHeaderResourceURLsToInclude = _EVERY_RESOURCE;
+let _myCheckResourcesAlreadyInCacheDuringPrecacheIgnoringVaryHeaderResourceURLsToExclude = _NO_RESOURCE;
+
+
+
+// U can use this to be sure a resource is fetched from the network without looking at the browser cache
+//
+// For resources from the current location it should be safe to override that, but for cross origin (CORS)
+// there might be issues, so use this with caution
+//
+// The resources URLs can also be a regex
+let _myFetchFromNetworkWithoutBrowserCacheResourceURLsToInclude = _EVERY_RESOURCE_FROM_CURRENT_LOCATION;
+let _myFetchFromNetworkWithoutBrowserCacheResourceURLsToExclude = _NO_RESOURCE;
+
+
+
 // Used to cache opaque responses
 // Caching opaque responses can lead to a number of issues so use this with caution
 // I also advise u to enable the cache update in background when caching opaque responses,
@@ -853,13 +885,13 @@ async function _fetchFromServiceWorker(request) {
             if (tryFetchFromCacheFirst || forceTryFetchFromCacheFirstOnNetworkError) {
                 cacheAlreadyTried = true;
 
-                let responseFromCache = await _fetchFromCache(request.url);
+                let responseFromCache = await _fetchFromCache(request);
 
                 if (responseFromCache == null) {
                     let ignoreURLParamsAsFallback = _shouldResourceURLBeIncluded(request.url, _myTryFetchFromCacheFirstIgnoringURLParamsAsFallbackResourceURLsToInclude, _myTryFetchFromCacheFirstIgnoringURLParamsAsFallbackResourceURLsToExclude);
                     let ignoreVaryHeaderAsFallback = _shouldResourceURLBeIncluded(request.url, _myTryFetchFromCacheFirstIgnoringVaryHeaderAsFallbackResourceURLsToInclude, _myTryFetchFromCacheFirstIgnoringVaryHeaderAsFallbackResourceURLsToExclude);
                     if (ignoreURLParamsAsFallback || ignoreVaryHeaderAsFallback) {
-                        responseFromCache = await _fetchFromCache(request.url, ignoreURLParamsAsFallback, ignoreVaryHeaderAsFallback);
+                        responseFromCache = await _fetchFromCache(request, ignoreURLParamsAsFallback, ignoreVaryHeaderAsFallback);
                         if (responseFromCache != null) {
                             let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
                             if (logEnabled) {
@@ -905,7 +937,7 @@ async function _fetchFromServiceWorker(request) {
 
             if (fetchFromCacheAllowed) {
                 if (!cacheAlreadyTried) {
-                    let responseFromCache = await _fetchFromCache(request.url);
+                    let responseFromCache = await _fetchFromCache(request);
                     if (responseFromCache != null) {
                         return responseFromCache;
                     }
@@ -914,7 +946,7 @@ async function _fetchFromServiceWorker(request) {
                 let ignoreURLParamsAsFallback = _shouldResourceURLBeIncluded(request.url, _myFetchFromCacheIgnoringURLParamsAsFallbackResourceURLsToInclude, _myFetchFromCacheIgnoringURLParamsAsFallbackResourceURLsToExclude);
                 let ignoreVaryHeaderAsFallback = _shouldResourceURLBeIncluded(request.url, _myFetchFromCacheIgnoringVaryHeaderAsFallbackResourceURLsToInclude, _myFetchFromCacheIgnoringVaryHeaderAsFallbackResourceURLsToExclude);
                 if (ignoreURLParamsAsFallback || ignoreVaryHeaderAsFallback) {
-                    let fallbackResponseFromCache = await _fetchFromCache(request.url, ignoreURLParamsAsFallback, ignoreVaryHeaderAsFallback);
+                    let fallbackResponseFromCache = await _fetchFromCache(request, ignoreURLParamsAsFallback, ignoreVaryHeaderAsFallback);
                     if (fallbackResponseFromCache != null) {
                         let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
                         if (logEnabled) {
@@ -970,7 +1002,24 @@ async function _fetchFromNetwork(request, fetchFromNetworkAllowedOverride = null
     try {
         let fetchFromNetworkAllowed = _shouldResourceURLBeIncluded(request.url, _myFetchFromNetworkAllowedResourceURLsToInclude, _myFetchFromNetworkAllowedResourceURLsToExclude);
         if ((fetchFromNetworkAllowed && fetchFromNetworkAllowedOverride == null) || (fetchFromNetworkAllowedOverride != null && fetchFromNetworkAllowedOverride)) {
-            responseFromNetwork = await fetch(request);
+            let fetchFromNetworkWithoutBrowserCache = _shouldResourceURLBeIncluded(request.url, _myFetchFromNetworkWithoutBrowserCacheResourceURLsToInclude, _myFetchFromNetworkWithoutBrowserCacheResourceURLsToExclude);
+            if (fetchFromNetworkWithoutBrowserCache) {
+                let requestCacheControlHeader = "";
+                if (request.headers != null) {
+                    requestCacheControlHeader = request.headers.get("Cache-Control");
+                    if (requestCacheControlHeader == null) {
+                        requestCacheControlHeader = "";
+                    }
+                }
+
+                let requestWithoutBrowserCacheCacheControlHeader = (requestCacheControlHeader.length == 0) ? ("no-cache") : (requestCacheControlHeader + ", no-cache");
+
+                let requestWithoutBrowserCache = new Request(request);
+                requestWithoutBrowserCache.headers.set("Cache-Control", requestWithoutBrowserCacheCacheControlHeader);
+                responseFromNetwork = await fetch(requestWithoutBrowserCache);
+            } else {
+                responseFromNetwork = await fetch(request);
+            }
         } else {
             throw new Error("Fetch from network is not allowed: " + request.url);
         }
@@ -1012,7 +1061,7 @@ async function _postFetchFromNetwork(request, responseFromNetwork, refetchFromNe
     return responseHasBeenCached;
 }
 
-async function _fetchFromCache(resourceURL, ignoreURLParams = false, ignoreVaryHeader = false) {
+async function _fetchFromCache(request, ignoreURLParams = false, ignoreVaryHeader = false) {
     let responseFromCache = null;
 
     try {
@@ -1020,14 +1069,14 @@ async function _fetchFromCache(resourceURL, ignoreURLParams = false, ignoreVaryH
         let hasCache = await caches.has(currentCacheID); // Avoid creating the cache when opening it if it has not already been created
         if (hasCache) {
             let currentCache = await caches.open(currentCacheID);
-            responseFromCache = await currentCache.match(resourceURL, { ignoreSearch: ignoreURLParams, ignoreVary: ignoreVaryHeader });
+            responseFromCache = await currentCache.match(request, { ignoreSearch: ignoreURLParams, ignoreVary: ignoreVaryHeader });
         }
     } catch (error) {
         responseFromCache = null;
 
         let logEnabled = _shouldResourceURLBeIncluded(_getCurrentLocation(), _myLogEnabledLocationURLsToInclude, _myLogEnabledLocationURLsToExclude);
         if (logEnabled) {
-            console.error("An error occurred while trying to get from the cache: " + resourceURL);
+            console.error("An error occurred while trying to get from the cache: " + request.url);
             console.error(error);
         }
     }
@@ -1146,7 +1195,8 @@ async function _cacheResourcesToPrecache(rejectServiceWorkerOnPrecacheFailEnable
             } else {
                 let resourceAlreadyInCache = false;
                 if (currentCache != null) {
-                    resourceAlreadyInCache = await currentCache.match(resourceFullURLToPrecache) != null;
+                    let ignoreVaryHeader = _shouldResourceURLBeIncluded(resourceFullURLToPrecache, _myCheckResourcesAlreadyInCacheDuringPrecacheIgnoringVaryHeaderResourceURLsToInclude, _myCheckResourcesAlreadyInCacheDuringPrecacheIgnoringVaryHeaderResourceURLsToExclude);
+                    resourceAlreadyInCache = await currentCache.match(resourceFullURLToPrecache, { ignoreVary: ignoreVaryHeader }) != null;
                 }
 
                 if (!resourceAlreadyInCache) {
@@ -1155,7 +1205,8 @@ async function _cacheResourcesToPrecache(rejectServiceWorkerOnPrecacheFailEnable
                     } else {
                         let resourceAlreadyInTempCache = false;
                         if (currentTempCache != null) {
-                            resourceAlreadyInTempCache = await currentTempCache.match(resourceFullURLToPrecache) != null;
+                            let ignoreVaryHeader = _shouldResourceURLBeIncluded(resourceFullURLToPrecache, _myCheckResourcesAlreadyInCacheDuringPrecacheIgnoringVaryHeaderResourceURLsToInclude, _myCheckResourcesAlreadyInCacheDuringPrecacheIgnoringVaryHeaderResourceURLsToExclude);
+                            resourceAlreadyInTempCache = await currentTempCache.match(resourceFullURLToPrecache, { ignoreVary: ignoreVaryHeader }) != null;
                         }
 
                         if (!resourceAlreadyInTempCache) {
