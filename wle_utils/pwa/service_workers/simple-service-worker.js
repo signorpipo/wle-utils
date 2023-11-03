@@ -28,6 +28,9 @@ let _myUpdateCacheInBackground = false;
 // since the params might be used to fetch a different resource
 let _myFetchFromCacheIgnoringURLParamsForResourcesFromCurrentLocationAsFallback = false;
 
+// Ignore browser cache when fetching from the network
+let _myFetchFromNetworkIgnoringBrowserCacheForResourcesFromCurrentLocation = false;
+
 // If u are not using @_myTryFetchFromCacheFirst, when the network fails for the current location it will take a lot to fetch the requests from the cache,
 // since every request needs to fail first
 // U can enable this to make it so that on the first network error from the current location u switch to use the cache first
@@ -127,12 +130,12 @@ async function _fetchFromServiceWorker(request) {
         if (_myTryFetchFromCacheFirst || _myForceTryFetchFromCacheFirstOnNetworkErrorEnabled) {
             cacheAlreadyTried = true;
 
-            let responseFromCache = await _fetchFromCache(request.url);
+            let responseFromCache = await _fetchFromCache(request);
 
             if (responseFromCache == null) {
                 let ignoreURLParamsAsFallback = _shouldResourceURLBeIncluded(request.url, _IGNORE_INDEX_URL_PARAMS, _NO_RESOURCE);
                 if (ignoreURLParamsAsFallback) {
-                    responseFromCache = await _fetchFromCache(request.url, ignoreURLParamsAsFallback);
+                    responseFromCache = await _fetchFromCache(request, ignoreURLParamsAsFallback);
                     if (responseFromCache != null) {
                         if (_myLogEnabled) {
                             console.warn("Try fetch from cache first using a fallback: " + request.url);
@@ -166,7 +169,7 @@ async function _fetchFromServiceWorker(request) {
             }
 
             if (!cacheAlreadyTried) {
-                let responseFromCache = await _fetchFromCache(request.url);
+                let responseFromCache = await _fetchFromCache(request);
                 if (responseFromCache != null) {
                     return responseFromCache;
                 }
@@ -174,7 +177,7 @@ async function _fetchFromServiceWorker(request) {
 
             let ignoreURLParamsAsFallback = _myFetchFromCacheIgnoringURLParamsForResourcesFromCurrentLocationAsFallback && _shouldResourceURLBeIncluded(request.url, _EVERY_RESOURCE_FROM_CURRENT_LOCATION, _NO_RESOURCE);
             if (ignoreURLParamsAsFallback) {
-                let fallbackResponseFromCache = await _fetchFromCache(request.url, ignoreURLParamsAsFallback);
+                let fallbackResponseFromCache = await _fetchFromCache(request, ignoreURLParamsAsFallback);
                 if (fallbackResponseFromCache != null) {
                     if (_myLogEnabled) {
                         console.warn("Fetch from cache using a fallback: " + request.url);
@@ -225,7 +228,24 @@ async function _fetchFromNetwork(request) {
     let responseFromNetwork = null;
 
     try {
-        responseFromNetwork = await fetch(request);
+        let fetchFromNetworkIgnoringBrowserCache = _myFetchFromNetworkIgnoringBrowserCacheForResourcesFromCurrentLocation && _shouldResourceURLBeIncluded(request.url, _EVERY_RESOURCE_FROM_CURRENT_LOCATION, _NO_RESOURCE);
+        if (fetchFromNetworkIgnoringBrowserCache) {
+            let requestCacheControlHeader = "";
+            if (request.headers != null) {
+                requestCacheControlHeader = request.headers.get("Cache-Control");
+                if (requestCacheControlHeader == null) {
+                    requestCacheControlHeader = "";
+                }
+            }
+
+            let requestIgnoringBrowserCacheCacheControlHeader = (requestCacheControlHeader.length == 0) ? ("no-cache") : (requestCacheControlHeader + ", no-cache");
+
+            let requestIgnoringBrowserCache = new Request(request);
+            requestIgnoringBrowserCache.headers.set("Cache-Control", requestIgnoringBrowserCacheCacheControlHeader);
+            responseFromNetwork = await fetch(requestIgnoringBrowserCache);
+        } else {
+            responseFromNetwork = await fetch(request);
+        }
     } catch (error) {
         let errorMessage = "An error occurred while trying to fetch from the network: " + request.url;
         responseFromNetwork = new Response(errorMessage + "\n\n" + error, {
@@ -255,7 +275,7 @@ async function _postFetchFromNetwork(request, responseFromNetwork, useTempCache 
     return responseHasBeenCached;
 }
 
-async function _fetchFromCache(resourceURL, ignoreURLParams = false) {
+async function _fetchFromCache(request, ignoreURLParams = false) {
     let responseFromCache = null;
 
     try {
@@ -263,13 +283,13 @@ async function _fetchFromCache(resourceURL, ignoreURLParams = false) {
         let hasCache = await caches.has(currentCacheID); // Avoid creating the cache when opening it if it has not already been created
         if (hasCache) {
             let currentCache = await caches.open(currentCacheID);
-            responseFromCache = await currentCache.match(resourceURL, { ignoreSearch: ignoreURLParams });
+            responseFromCache = await currentCache.match(request, { ignoreSearch: ignoreURLParams });
         }
     } catch (error) {
         responseFromCache = null;
 
         if (_myLogEnabled) {
-            console.error("An error occurred while trying to get from the cache: " + resourceURL);
+            console.error("An error occurred while trying to get from the cache: " + request.url);
             console.error(error);
         }
     }
@@ -349,13 +369,13 @@ async function _cacheResourcesToPrecache() {
 
             let resourceAlreadyInCache = false;
             if (currentCache != null) {
-                resourceAlreadyInCache = await currentCache.match(resourceFullURLToPrecache) != null;
+                resourceAlreadyInCache = await currentCache.match(resourceFullURLToPrecache, { ignoreVary: true }) != null;
             }
 
             if (!resourceAlreadyInCache) {
                 let resourceAlreadyInTempCache = false;
                 if (currentTempCache != null) {
-                    resourceAlreadyInTempCache = await currentTempCache.match(resourceFullURLToPrecache) != null;
+                    resourceAlreadyInTempCache = await currentTempCache.match(resourceFullURLToPrecache, { ignoreVary: true }) != null;
                 }
 
                 if (!resourceAlreadyInTempCache) {
