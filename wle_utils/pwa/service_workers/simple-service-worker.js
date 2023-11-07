@@ -230,19 +230,8 @@ async function _fetchFromNetwork(request) {
     try {
         let fetchFromNetworkIgnoringBrowserCache = _myFetchFromNetworkIgnoringBrowserCacheForResourcesFromCurrentLocation && _shouldResourceURLBeIncluded(request.url, _EVERY_RESOURCE_FROM_CURRENT_LOCATION, _NO_RESOURCE);
         if (fetchFromNetworkIgnoringBrowserCache) {
-            let requestCacheControlHeader = "";
-            if (request.headers != null) {
-                requestCacheControlHeader = request.headers.get("Cache-Control");
-                if (requestCacheControlHeader == null) {
-                    requestCacheControlHeader = "";
-                }
-            }
-
-            let requestIgnoringBrowserCacheCacheControlHeader = (requestCacheControlHeader.length == 0) ? ("no-cache") : (requestCacheControlHeader + ", no-cache");
-
-            let requestIgnoringBrowserCache = new Request(request);
-            if (requestIgnoringBrowserCache.headers != null) {
-                requestIgnoringBrowserCache.headers.set("Cache-Control", requestIgnoringBrowserCacheCacheControlHeader);
+            if (request.cache != "no-cache" && request.cache != "no-store" && request.cache != "reload") {
+                let requestIgnoringBrowserCache = new Request(request, { cache: "no-cache" });
                 responseFromNetwork = await fetch(requestIgnoringBrowserCache);
             } else {
                 responseFromNetwork = await fetch(request);
