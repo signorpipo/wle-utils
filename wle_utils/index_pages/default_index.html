@@ -14,9 +14,7 @@
     {{ if settings.runtime.pwa.enable }}
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icon192.png">
-    {{ end }}
-
-    {{ if settings.runtime.pwa.enable }}
+    
     <script>
         if (navigator.serviceWorker != null) {
             navigator.serviceWorker.register("service-worker.js")
