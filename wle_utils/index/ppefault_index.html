@@ -11,6 +11,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="{{ settings.runtime.xrButtonColor }}">
 
+    {{ if settings.runtime.pwa.enable }}
+        <link rel="manifest" href="manifest.json">
+        <link rel="apple-touch-icon" href="icon192.png">
+
+        <script>
+            if (navigator.serviceWorker != null) {
+                navigator.serviceWorker.register('service-worker.js')
+                    .then(reg => console.log('Service worker registered!', reg))
+                    .catch(err => console.error('Unable to register service worker!', err));
+            }
+        </script>
+    {{ end }}
+
+    <script type="module" src="{{ settings.project.name }}-bundle.js?t={{timestamp}}"></script>
+
+    {{ if settings.runtime.googleAnalytics != '' }}
+        <script async src="https://www.googletagmanager.com/gtag/js?id={{ settings.runtime.googleAnalytics }}"></script>
+        <script>
+            window.dataLayer = window.dataLayer || [];
+            function gtag() { dataLayer.push(arguments); }
+
+            gtag('js', new Date());
+            gtag('config', '{{ settings.runtime.googleAnalytics }}');
+
+            {{ if settings.runtime.googleAnalyticsSecondary != '' }}
+                gtag('config', '{{ settings.runtime.googleAnalyticsSecondary }}');
+            {{ end }}
+        </script>
+    {{ end }}
+
     <style>
         html {
             height: 100%;
@@ -96,36 +126,6 @@
             opacity: 1;
         }
     </style>
-
-    {{ if settings.runtime.pwa.enable }}
-        <link rel="manifest" href="manifest.json">
-        <link rel="apple-touch-icon" href="icon192.png">
-
-        <script>
-            if (navigator.serviceWorker != null) {
-                navigator.serviceWorker.register('service-worker.js')
-                    .then(reg => console.log('Service worker registered!', reg))
-                    .catch(err => console.error('Unable to register service worker!', err));
-            }
-        </script>
-    {{ end }}
-
-    <script type="module" src="{{ settings.project.name }}-bundle.js?t={{timestamp}}"></script>
-
-    {{ if settings.runtime.googleAnalytics != '' }}
-        <script async src="https://www.googletagmanager.com/gtag/js?id={{ settings.runtime.googleAnalytics }}"></script>
-        <script>
-            window.dataLayer = window.dataLayer || [];
-            function gtag() { dataLayer.push(arguments); }
-
-            gtag('js', new Date());
-            gtag('config', '{{ settings.runtime.googleAnalytics }}');
-
-            {{ if settings.runtime.googleAnalyticsSecondary != '' }}
-                gtag('config', '{{ settings.runtime.googleAnalyticsSecondary }}');
-            {{ end }}
-        </script>
-    {{ end }}
 </head>
 
 <body>
