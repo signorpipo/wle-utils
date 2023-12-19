@@ -133,18 +133,18 @@
             stroke: {{ settings.runtime.xrButtonColor }};
         }
 
-        /* Once supported state is known, show the button */
+        /* This is a value set at runtime when the vr/ar supported state is known */
         [data-supported] {
             transform: scale(1);
         }
 
-        /* If not supported, we dim out */
+        /* If supported, the button is shown */
         [data-supported="true"] {
             opacity: 1;
             pointer-events: all;
         }
 
-        /* If not supported, we dim out */
+        /* If not supported, the buttons is shown but disabled */
         [data-supported="false"] {
             opacity: 0.5;
         }
