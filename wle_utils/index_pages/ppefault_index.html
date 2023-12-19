@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
+
 <head>
     <link rel="preload" href="{{ settings.project.name }}-bundle.js" as="script">
 
@@ -14,7 +15,7 @@
     {{ if settings.runtime.pwa.enable }}
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icon192.png">
-    
+
     <script>
         if (navigator.serviceWorker != null) {
             navigator.serviceWorker.register("service-worker.js");
@@ -174,4 +175,5 @@
         {{ end }}
     </div>
 </body>
+
 </html>
