@@ -16,8 +16,6 @@
     <link rel="apple-touch-icon" href="icon192.png">
     {{ end }}
 
-    <script type="module" src="{{ settings.project.name }}-bundle.js?t={{timestamp}}"></script>
-
     {{ if settings.runtime.pwa.enable }}
     <script>
         if (navigator.serviceWorker != null) {
@@ -27,6 +25,8 @@
         }
     </script>
     {{ end }}
+
+    <script type="module" src="{{ settings.project.name }}-bundle.js?t={{timestamp}}"></script>
 
     {{ if settings.runtime.googleAnalytics != "" }}
     <script async src="https://www.googletagmanager.com/gtag/js?id={{ settings.runtime.googleAnalytics }}"></script>
