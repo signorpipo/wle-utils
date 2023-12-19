@@ -1,7 +1,9 @@
 {
 	"name": "<app>",
 	"short_name": "<app>",
+	"author": "<author>",
 	"description": "<app description>",
+	"homepage_url": "<link to the main app page>",
 	"lang": "en-US",
 	"display": "standalone",
 	"ovr_package_name": "<com.author.app>",
@@ -57,8 +59,8 @@
 	],
 	"screenshots": [
 		{
-			"src": "pwa/screenshots/1.png",
-			"sizes": "2560x1440",
+			"src": "<path/to/screenshot>/<screenshot-name>.png",
+			"sizes": "<screenshot width>x<screenshot height>",
 			"type": "image/png",
 			"description": "<screenshot description>"
 		}
