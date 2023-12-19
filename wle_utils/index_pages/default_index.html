@@ -2,19 +2,22 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 
 <head>
-    <link rel="preload" href="{{ settings.project.name }}-bundle.js?t={{timestamp}}" as="script">
-
-    <title>{{ settings.project.name }}</title>
-    <link rel="icon" href="icon48.png">
-
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="{{ settings.runtime.xrButtonColor }}">
 
+    <title>{{ settings.project.name }}</title>
+
+    <link rel="icon" href="icon48.png">
+
     {{ if settings.runtime.pwa.enable }}
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="icon192.png">
+    {{ end }}
 
+    <script type="module" src="{{ settings.project.name }}-bundle.js?t={{timestamp}}"></script>
+
+    {{ if settings.runtime.pwa.enable }}
     <script>
         if (navigator.serviceWorker != null) {
             navigator.serviceWorker.register("service-worker.js")
@@ -23,8 +26,6 @@
         }
     </script>
     {{ end }}
-
-    <script type="module" src="{{ settings.project.name }}-bundle.js?t={{timestamp}}"></script>
 
     {{ if settings.runtime.googleAnalytics != "" }}
     <script async src="https://www.googletagmanager.com/gtag/js?id={{ settings.runtime.googleAnalytics }}"></script>
