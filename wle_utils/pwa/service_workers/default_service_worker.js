@@ -104,7 +104,7 @@ let _myUpdateCacheInBackgroundResourceURLsToExclude = _NO_RESOURCE;
 // This is especially useful to avoid using a service worker on development locations like "localhost"
 //
 // The locations URLs can also be a regex
-let _myRejectServiceWorkerLocationURLsToInclude = _NO_LOCATION;
+let _myRejectServiceWorkerLocationURLsToInclude = _LOCALHOST;
 let _myRejectServiceWorkerLocationURLsToExclude = _NO_LOCATION;
 
 
@@ -112,7 +112,7 @@ let _myRejectServiceWorkerLocationURLsToExclude = _NO_LOCATION;
 // Enable some extra logs to better understand what's going on and why things might not be working
 //
 // The resources URLs can also be a regex
-let _myLogEnabledLocationURLsToInclude = _NO_LOCATION;
+let _myLogEnabledLocationURLsToInclude = _LOCALHOST;
 let _myLogEnabledLocationURLsToExclude = _NO_LOCATION;
 
 

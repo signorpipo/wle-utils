@@ -40,7 +40,7 @@ let _myForceTryFetchFromCacheFirstOnNetworkErrorFromCurrentLocation = false;
 
 // This will avoid installing the service worker on localhost,
 // since it might be annoying while developing your app
-let _myRejectServiceWorkerOnLocalhost = false;
+let _myRejectServiceWorkerOnLocalhost = true;
 
 
 
