@@ -70,6 +70,9 @@ let _myCacheVersion = 1;
 let _myResourceURLsToPrecache = [
     "/",
     "index.html",
+    "favicon.ico",
+    "manifest.json",
+    "icon192.png",
     _myAppName + "-bundle.js",
     //"WonderlandRuntime-physx.wasm",
     //"WonderlandRuntime-physx.js",
@@ -83,16 +86,7 @@ let _myResourceURLsToPrecache = [
     //"WonderlandRuntime-physx-simd-threads.worker.js",
     "WonderlandRuntime-LoadingScreen.bin",
     _myAppName + ".bin",
-    _myAppName + "-textures.bin",
-    "favicon.ico",
-    "manifest.json",
-    //"icon48.png",
-    //"icon72.png",
-    //"icon96.png",
-    //"icon144.png",
-    //"icon168.png",
-    //"icon192.png",
-    //"icon512.png",
+    _myAppName + "-textures.bin"
 ];
 
 
