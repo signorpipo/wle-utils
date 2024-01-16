@@ -72,8 +72,15 @@ let _myResourceURLsToPrecache = [
     "index.html",
     "favicon.ico",
     "manifest.json",
+    "icon48.png",
+    "icon72.png",
+    "icon96.png",
+    "icon144.png",
+    "icon168.png",
     "icon192.png",
+    "icon512.png",
     _myAppName + "-bundle.js",
+    "WonderlandRuntime-LoadingScreen.bin",
     //"WonderlandRuntime-physx.wasm",
     //"WonderlandRuntime-physx.js",
     //"WonderlandRuntime-physx-simd.wasm",
@@ -84,7 +91,6 @@ let _myResourceURLsToPrecache = [
     //"WonderlandRuntime-physx-simd-threads.wasm",
     //"WonderlandRuntime-physx-simd-threads.js",
     //"WonderlandRuntime-physx-simd-threads.worker.js",
-    "WonderlandRuntime-LoadingScreen.bin",
     _myAppName + ".bin",
     _myAppName + "-textures.bin"
 ];
