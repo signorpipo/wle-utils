@@ -31,7 +31,7 @@ let _IGNORE_INDEX_URL_PARAMS = [
 // This should not be changed after u have released your app, since it could be used, for example, to look for previous caches
 // It's not an issue if u change it, it will just not be able to clean previous caches or use them,
 // since it will basically behave like a completely new service worker
-let _myAppName = "app";
+let _myAppName = "<app>";
 
 
 

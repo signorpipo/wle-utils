@@ -1,6 +1,6 @@
 // #region Service Worker Setup
 
-let _myAppName = "app";
+let _myAppName = "<app>";
 let _myServiceWorkerVersion = 1;
 let _myCacheVersion = 1;
 
