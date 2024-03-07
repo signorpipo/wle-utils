@@ -1,0 +1,19 @@
+{
+    "name": "<name>",
+    "version": "<1.0.0>",
+    "author": "<author>",
+    "description": "<description>",
+    "homepage": "<https://homepage.com>",
+    "repository": {
+        "type": "git",
+        "url": "git+<https://github.com/repository.git>"
+    },
+    "license": "<license>",
+    "type": "module",
+    "dependencies": {
+        "@wonderlandengine/api": "^1.1.5",
+        "@wonderlandengine/components": "^1.1.0",
+        "gl-matrix": "^3.4.3",
+        "howler": "^2.2.4"
+    }
+}

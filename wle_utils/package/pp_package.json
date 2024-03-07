@@ -8,7 +8,7 @@
         "type": "git",
         "url": "git+<https://github.com/repository.git>"
     },
-    "license": "ISC",
+    "license": "<license>",
     "type": "module",
     "wonderlandengine": {},
     "dependencies": {
