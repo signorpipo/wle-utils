@@ -23,11 +23,12 @@ module.exports = {
     ],
     rules: {
         "semi": "error",
-        "no-unused-vars": ["error", { "args": "none", "varsIgnorePattern": "^__" }],
+        "no-unused-vars": "off",
         "deprecation/deprecation": "error",
         "import/extensions": ["error", "always"],
         "import/no-unresolved": "off",
-        "@typescript-eslint/no-unused-vars": "off",
+        "import/no-duplicates": "off",
+        "@typescript-eslint/no-unused-vars": ["error", { "args": "none", "varsIgnorePattern": "^__" }],
         "@typescript-eslint/no-explicit-any": "off"
     },
     ignorePatterns: [
@@ -45,10 +46,7 @@ module.exports = {
         {
             "files": ["*.ts"],
             "rules": {
-                "@typescript-eslint/explicit-function-return-type": [
-                    "error",
-                    { "allowExpressions": true }
-                ]
+                "@typescript-eslint/explicit-function-return-type": ["error", { "allowExpressions": true }]
             }
         }
     ]
