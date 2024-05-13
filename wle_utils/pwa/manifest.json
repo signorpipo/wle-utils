@@ -1,6 +1,7 @@
 {
     "name": "<app>",
     "short_name": "<app>",
+    "version": "<version>",
     "author": "<author>",
     "description": "<description>",
     "homepage_url": "<link to the main app page>",
@@ -62,7 +63,15 @@
             "src": "<path/to/screenshot>/<screenshot-name>.png",
             "sizes": "<screenshot width>x<screenshot height>",
             "type": "image/png",
-            "description": "<screenshot description>"
+            "form_factor": "wide",
+            "label": "<screenshot description>"
+        },
+        {
+            "src": "<path/to/screenshot>/<screenshot-name>.png",
+            "sizes": "<screenshot width>x<screenshot height>",
+            "type": "image/png",
+            "form_factor": "narrow",
+            "label": "<screenshot description>"
         }
     ]
 }
