@@ -11,6 +11,16 @@
  *     - `wle:auto-benchmark:start` and `wle:auto-benchmark:end`: Append the benchmarking code
  */
 
+const waitWindowLoad: Promise<void> = new Promise((resolve: () => void) => {
+    if (document.readyState == "complete") {
+        resolve();
+    } else {
+        window.addEventListener("load", resolve, { once: true });
+    }
+});
+
+await waitWindowLoad;
+
 /* wle:auto-imports:start */
 /* wle:auto-imports:end */
 
