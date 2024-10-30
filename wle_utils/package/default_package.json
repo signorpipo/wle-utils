@@ -11,7 +11,7 @@
     "license": "<license>",
     "type": "module",
     "dependencies": {
-        "@wonderlandengine/api": "~1.2.2",
+        "@wonderlandengine/api": "~1.2.4",
         "@wonderlandengine/components": "~1.1.5",
         "gl-matrix": "^3.4.3",
         "howler": "^2.2.4"
