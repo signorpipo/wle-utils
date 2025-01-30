@@ -4,12 +4,13 @@
  * This is the entry point of your standalone application.
  *
  * There are multiple tags used by the editor to inject code automatically:
- *     - `wle:auto-imports:start` and `wle:auto-imports:end`: The list of import statements
- *     - `wle:auto-register:start` and `wle:auto-register:end`: The list of component to register
  *     - `wle:auto-constants:start` and `wle:auto-constants:end`: The project's constants,
  *        such as the project's name, whether it should use the physx runtime, etc...
  *     - `wle:auto-benchmark:start` and `wle:auto-benchmark:end`: Append the benchmarking code
  */
+
+import { loadRuntime, LoadRuntimeOptions, LogLevel } from '@wonderlandengine/api';
+import 'wle-pp/add_type_extensions_to_typescript.js';
 
 const waitWindowLoad: Promise<void> = new Promise((resolve: () => void) => {
     if (document.readyState == "complete") {
@@ -20,12 +21,6 @@ const waitWindowLoad: Promise<void> = new Promise((resolve: () => void) => {
 });
 
 await waitWindowLoad;
-
-/* wle:auto-imports:start */
-/* wle:auto-imports:end */
-
-import { loadRuntime, LoadRuntimeOptions, LogLevel } from '@wonderlandengine/api';
-import 'wle-pp/add_type_extensions_to_typescript.js';
 
 /* wle:auto-constants:start */
 /* wle:auto-constants:end */
@@ -63,14 +58,7 @@ function setupButtonsXR(): void {
     }
 }
 
-if (document.readyState === 'loading') {
-    window.addEventListener('load', setupButtonsXR);
-} else {
-    setupButtonsXR();
-}
-
-/* wle:auto-register:start */
-/* wle:auto-register:end */
+setupButtonsXR();
 
 const sceneLoadDelaySeconds = 0;
 if (sceneLoadDelaySeconds > 0) {
